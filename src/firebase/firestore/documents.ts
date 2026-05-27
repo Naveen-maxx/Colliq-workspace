@@ -52,7 +52,12 @@ export async function getDocument(documentId: string): Promise<DocumentData | nu
   return data;
 }
 
-export async function updateDocument(documentId: string, data: Partial<DocumentData>) {
+export async function deleteDocument(documentId: string): Promise<void> {
+  const docRef = doc(db, "documents", documentId);
+  await updateDoc(docRef, { deleted: true });
+}
+
+export async function updateDocument(documentId: string, data: Partial<DocumentData>): Promise<void> {
   const docRef = doc(db, "documents", documentId);
   await updateDoc(docRef, {
     ...data,

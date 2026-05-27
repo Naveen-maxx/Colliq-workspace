@@ -22,11 +22,23 @@ import {
   User as UserIcon,
   Settings,
   LogOut,
+  Trash,
+  StarOff,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { logout } from "@/firebase/auth";
-import { createDocument, getRecentDocuments } from "@/firebase/firestore/documents";
-import { getFavoriteDocuments } from "@/firebase/firestore/favorites";
+import { createDocument, getRecentDocuments, deleteDocument } from "@/firebase/firestore/documents";
+import { getFavoriteDocuments, toggleFavorite } from "@/firebase/firestore/favorites";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import colliqLogo from "@/assets/landing/colliq-logo.png";
 
 export const Route = createFileRoute("/workspace")({
@@ -99,24 +111,28 @@ const FAVORITES = [
 
 const SHARED = [
   {
+    id: "mock-shared-1",
     title: "Partner Brief — Acme",
     edited: "Shared 1h ago",
     people: ["Acme team"],
     tint: "var(--accent-warm)",
   },
   {
+    id: "mock-shared-2",
     title: "Investor Update — May",
     edited: "Shared yesterday",
     people: ["Board"],
     tint: "var(--cursor-violet)",
   },
   {
+    id: "mock-shared-3",
     title: "Launch Checklist",
     edited: "Shared 2d ago",
     people: ["Marketing"],
     tint: "var(--cursor-pink)",
   },
   {
+    id: "mock-shared-4",
     title: "Customer Interviews",
     edited: "Shared 4d ago",
     people: ["Research"],
@@ -368,8 +384,9 @@ function Main() {
   const { user } = useAuth();
   const [recentDocs, setRecentDocs] = useState<any[]>([]);
   const [favoriteDocs, setFavoriteDocs] = useState<any[]>([]);
+  const [docToDelete, setDocToDelete] = useState<Doc | null>(null);
 
-  useEffect(() => {
+  const refreshDocs = () => {
     if (!user) return;
     
     getRecentDocuments(user.uid).then(docs => {
@@ -391,18 +408,50 @@ function Main() {
         tint: "var(--cursor-blue)"
       })));
     });
+  };
+
+  useEffect(() => {
+    refreshDocs();
   }, [user]);
+
+  const handleDelete = async () => {
+    if (docToDelete?.id) {
+      if (!docToDelete.id.startsWith("mock-")) {
+        await deleteDocument(docToDelete.id);
+      }
+      setDocToDelete(null);
+      refreshDocs();
+    }
+  };
+
+  const handleUnfavorite = async (id: string) => {
+    try {
+      await toggleFavorite(id, false);
+      await refreshDocs();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <main className="mx-auto max-w-6xl px-6 pb-32 pt-10 sm:px-8">
       <StartSection />
-      <DocsSection id="recent" eyebrow="Workspace" title="Recent documents" items={recentDocs.length > 0 ? recentDocs : []} />
+      <DocsSection 
+        id="recent" 
+        eyebrow="Workspace" 
+        title="Recent documents" 
+        items={recentDocs.length > 0 ? recentDocs : []} 
+        onDeleteRequest={setDocToDelete}
+      />
       <DocsSection
         id="favorites"
         eyebrow="Pinned by you"
         title="Favorites"
         items={favoriteDocs.length > 0 ? favoriteDocs : []}
         compact
+        isFavoriteSection
+        onDeleteRequest={setDocToDelete}
+        onUnfavorite={handleUnfavorite}
       />
       <DocsSection
         id="shared"
@@ -410,8 +459,26 @@ function Main() {
         title="Shared with you"
         items={SHARED}
         compact
+        onDeleteRequest={setDocToDelete}
       />
       <TemplatesSection />
+
+      <AlertDialog open={!!docToDelete} onOpenChange={(open) => !open && setDocToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete <strong>{docToDelete?.title}</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   );
 }
@@ -542,12 +609,18 @@ function DocsSection({
   title,
   items,
   compact,
+  onDeleteRequest,
+  onUnfavorite,
+  isFavoriteSection
 }: {
   id: string;
   eyebrow?: string;
   title: string;
   items: Doc[];
   compact?: boolean;
+  onDeleteRequest?: (doc: Doc) => void;
+  onUnfavorite?: (id: string) => void;
+  isFavoriteSection?: boolean;
 }) {
   return (
     <section id={id} className="mt-16 scroll-mt-24">
@@ -560,14 +633,20 @@ function DocsSection({
         }`}
       >
         {items.map((d, i) => (
-          <DocCard key={d.title} doc={d} index={i} />
+          <DocCard 
+            key={d.id || d.title} 
+            doc={d} 
+            index={i} 
+            onDelete={() => onDeleteRequest?.(d)}
+            onUnfavorite={isFavoriteSection && d.id ? () => onUnfavorite?.(d.id as string) : undefined}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function DocCard({ doc, index }: { doc: Doc; index: number }) {
+function DocCard({ doc, index, onDelete, onUnfavorite }: { doc: Doc; index: number; onDelete?: () => void; onUnfavorite?: () => void }) {
   const navigate = useNavigate();
   return (
     <motion.button
@@ -577,11 +656,11 @@ function DocCard({ doc, index }: { doc: Doc; index: number }) {
       transition={{ duration: 0.45, delay: 0.04 * index, ease: [0.16, 1, 0.3, 1] }}
       whileHover={{ y: -2 }}
       onClick={() => {
-        if (doc.id) {
+        if (doc.id && !doc.id.startsWith("mock-")) {
           navigate({ to: "/editor/$documentId", params: { documentId: doc.id } });
         }
       }}
-      className="group flex flex-col overflow-hidden rounded-xl border border-border-soft bg-white text-left shadow-[0_1px_2px_rgba(40,40,90,0.04)] transition-all duration-300 hover:shadow-[0_14px_30px_-16px_rgba(40,40,90,0.2)]"
+      className="group relative flex flex-col overflow-hidden rounded-xl border border-border-soft bg-white text-left shadow-[0_1px_2px_rgba(40,40,90,0.04)] transition-all duration-300 hover:shadow-[0_14px_30px_-16px_rgba(40,40,90,0.2)]"
     >
       <div
         className="relative h-28 w-full overflow-hidden"
@@ -604,13 +683,34 @@ function DocCard({ doc, index }: { doc: Doc; index: number }) {
           className="absolute right-3 top-3 text-muted-foreground/60"
         />
       </div>
-      <div className="flex flex-col gap-1 px-3.5 py-3">
+      <div className="flex w-full flex-col gap-1 px-3.5 py-3">
         <p className="truncate text-[13.5px] font-medium text-foreground">{doc.title}</p>
         <div className="flex items-center justify-between text-[11.5px] text-muted-foreground">
           <span>{doc.edited}</span>
           <span className="truncate pl-2">{doc.people.join(" • ")}</span>
         </div>
       </div>
+      
+      {(onDelete || onUnfavorite) && (
+        <div className="absolute bottom-3 right-3 flex items-center gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          {onUnfavorite && (
+            <div 
+              onClick={(e) => { e.stopPropagation(); onUnfavorite(); }}
+              className="grid h-7 w-7 place-items-center rounded-md border border-border-soft bg-white/80 text-muted-foreground shadow-sm hover:bg-white hover:text-primary backdrop-blur-md transition-colors"
+            >
+              <StarOff size={14} strokeWidth={1.8} />
+            </div>
+          )}
+          {onDelete && (
+            <div 
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="grid h-7 w-7 place-items-center rounded-md border border-border-soft bg-white/80 text-muted-foreground shadow-sm hover:bg-destructive hover:text-destructive-foreground hover:border-destructive/30 backdrop-blur-md transition-colors"
+            >
+              <Trash size={14} strokeWidth={1.8} />
+            </div>
+          )}
+        </div>
+      )}
     </motion.button>
   );
 }

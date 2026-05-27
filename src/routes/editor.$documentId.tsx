@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, forwardRef } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -17,9 +17,24 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { Highlight } from "@tiptap/extension-highlight";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
+import FontFamily from "@tiptap/extension-font-family";
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import { common, createLowlight } from "lowlight";
+import { ReactNodeViewRenderer } from "@tiptap/react";
+import { BubbleMenu } from "@tiptap/react/menus";
+import * as Popover from "@radix-ui/react-popover";
+import { Indent } from "@/components/editor/extensions/indent";
+import { PageBreak } from "@/components/editor/extensions/page-break";
+import { CodeBlockComponent } from "@/components/editor/extensions/code-block";
+import { EDITOR_FONTS, loadGoogleFont } from "@/lib/fonts";
 import { SlashCommand, getSlashCommandConfig } from "@/components/editor/slash-command";
 import { getDocument, updateDocument } from "@/firebase/firestore/documents";
 import { toggleFavorite } from "@/firebase/firestore/favorites";
+
+const lowlight = createLowlight(common);
+
 import {
   FileText,
   Star,
@@ -45,7 +60,7 @@ import {
   AlignCenter,
   AlignRight,
   AlignJustify,
-  Indent,
+  Indent as IndentIcon,
   Outdent,
   ChevronDown,
   ChevronUp,
@@ -66,6 +81,20 @@ import {
   Quote,
   Eraser,
   Calculator,
+  Subscript as SubIcon,
+  Superscript as SuperIcon,
+  Strikethrough,
+  Code2,
+  Columns3,
+  Rows3,
+  TableProperties,
+  ArrowUpToLine,
+  ArrowDownToLine,
+  ArrowLeftToLine,
+  ArrowRightToLine,
+  ExternalLink,
+  X,
+  SplitSquareHorizontal,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import colliqLogo from "@/assets/landing/colliq-logo.png";
@@ -102,15 +131,19 @@ function EditorPage() {
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      StarterKit.configure({ 
+        heading: { levels: [1, 2, 3] },
+        codeBlock: false,
+      }),
       Underline,
       TextStyle,
+      FontFamily,
       Color,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       LinkExt.configure({
         openOnClick: false,
         autolink: true,
-        HTMLAttributes: { class: "text-primary underline underline-offset-2" },
+        HTMLAttributes: { class: "text-primary underline underline-offset-2 transition-colors hover:text-primary-soft cursor-pointer" },
       }),
       Placeholder.configure({ placeholder: "Start writing, or press ‘/’ for commands…" }),
       TaskList,
@@ -121,6 +154,15 @@ function EditorPage() {
       TableHeader,
       TableCell,
       Highlight.configure({ multicolor: true }),
+      Subscript,
+      Superscript,
+      CodeBlockLowlight.extend({
+        addNodeView() {
+          return ReactNodeViewRenderer(CodeBlockComponent);
+        },
+      }).configure({ lowlight }),
+      Indent,
+      PageBreak,
       SlashCommand.configure({
         suggestion: getSlashCommandConfig(),
       }),
@@ -160,7 +202,7 @@ function EditorPage() {
       setTitle(doc.title);
       setFavorite(doc.favorite);
       if (doc.content && Object.keys(doc.content).length > 0) {
-        editor.commands.setContent(doc.content, false);
+        editor.commands.setContent(doc.content, { emitUpdate: false });
       }
       setIsDocLoading(false);
     }).catch(() => {
@@ -235,6 +277,8 @@ function EditorPage() {
 
       <DocumentCanvas zoom={zoom}>
         <EditorContent editor={editor} />
+        {editor && <LinkBubbleMenu editor={editor} />}
+        {editor && <TableBubbleMenu editor={editor} />}
       </DocumentCanvas>
 
       <EditorStyles />
@@ -460,6 +504,7 @@ const MENUS: Record<string, MenuItem[]> = {
     { label: "Table", icon: TableIcon },
     { label: "Link", icon: Link2 },
     { label: "Horizontal line", icon: Minus },
+    { label: "Page break", icon: SplitSquareHorizontal },
     { label: "Code Block", icon: Code },
     { label: "Blockquote", icon: Quote },
   ],
@@ -467,6 +512,10 @@ const MENUS: Record<string, MenuItem[]> = {
     { label: "Bold", icon: Bold },
     { label: "Italic", icon: Italic },
     { label: "Underline", icon: UnderlineIcon },
+    { label: "Strikethrough", icon: Strikethrough },
+    { label: "Superscript", icon: SuperIcon },
+    { label: "Subscript", icon: SubIcon },
+    { label: "Code", icon: Code2 },
     { label: "Align Left", icon: AlignLeft },
     { label: "Align Center", icon: AlignCenter },
     { label: "Align Right", icon: AlignRight },
@@ -507,11 +556,11 @@ function MenuBar({ editor }: { editor: Editor | null }) {
       if (item === "Table")
         editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
       if (item === "Horizontal line") editor.chain().focus().setHorizontalRule().run();
+      if (item === "Page break") editor.chain().focus().setPageBreak().run();
       if (item === "Blockquote") editor.chain().focus().toggleBlockquote().run();
       if (item === "Code Block") editor.chain().focus().toggleCodeBlock().run();
       if (item === "Link") {
-        const url = window.prompt("Link URL");
-        if (url) editor.chain().focus().setLink({ href: url }).run();
+        // Handled by LinkPopoverWrapper via MenuBar map
       }
       if (item === "Image") {
         const url = window.prompt("Image URL");
@@ -521,6 +570,10 @@ function MenuBar({ editor }: { editor: Editor | null }) {
       if (item === "Bold") editor.chain().focus().toggleBold().run();
       if (item === "Italic") editor.chain().focus().toggleItalic().run();
       if (item === "Underline") editor.chain().focus().toggleUnderline().run();
+      if (item === "Strikethrough") editor.chain().focus().toggleStrike().run();
+      if (item === "Superscript") editor.chain().focus().toggleSuperscript().run();
+      if (item === "Subscript") editor.chain().focus().toggleSubscript().run();
+      if (item === "Code") editor.chain().focus().toggleCode().run();
       if (item === "Align Left") editor.chain().focus().setTextAlign("left").run();
       if (item === "Align Center") editor.chain().focus().setTextAlign("center").run();
       if (item === "Align Right") editor.chain().focus().setTextAlign("right").run();
@@ -564,16 +617,31 @@ function MenuBar({ editor }: { editor: Editor | null }) {
               >
                 {MENUS[m].map((item) => {
                   const Icon = item.icon;
-                  return (
+                  const btn = (
                     <button
                       key={item.label}
-                      onClick={() => handleItem(m, item.label)}
+                      onClick={(e) => {
+                        if (item.label === "Link") {
+                          e.preventDefault();
+                        } else {
+                          handleItem(m, item.label);
+                        }
+                      }}
                       className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-foreground/80 transition-colors hover:bg-surface-muted hover:text-foreground"
                     >
                       <Icon size={14} className="text-muted-foreground" />
                       {item.label}
                     </button>
                   );
+
+                  if (item.label === "Link") {
+                    return (
+                      <LinkPopoverWrapper key={item.label} editor={editor} onOpenChange={(open) => { if (!open) setOpen(null); }}>
+                        {btn}
+                      </LinkPopoverWrapper>
+                    );
+                  }
+                  return btn;
                 })}
               </motion.div>
             )}
@@ -607,7 +675,7 @@ function Toolbar({
   }
 
   return (
-    <div className="sticky top-0 z-30 flex items-center gap-1 border-b border-border-soft bg-[#FAFAFA]/95 px-4 py-2 backdrop-blur-xl">
+    <div className="sticky top-0 z-30 flex flex-wrap items-center gap-x-1 gap-y-2 border-b border-border-soft bg-[#FAFAFA]/95 px-4 py-2 backdrop-blur-xl">
       <ToolGroup>
         <IconBtn icon={Undo2} onClick={() => editor.chain().focus().undo().run()} label="Undo" />
         <IconBtn icon={Redo2} onClick={() => editor.chain().focus().redo().run()} label="Redo" />
@@ -616,7 +684,7 @@ function Toolbar({
 
       <ZoomDropdown zoom={zoom} setZoom={setZoom} />
       <TextStyleDropdown editor={editor} />
-      <FontFamilyDropdown />
+      <FontFamilyDropdown editor={editor} />
       <FontSizeControl />
 
       <ToolGroup>
@@ -638,18 +706,43 @@ function Toolbar({
           onClick={() => editor.chain().focus().toggleUnderline().run()}
           label="Underline"
         />
+        <IconBtn
+          icon={Strikethrough}
+          active={editor.isActive("strike")}
+          onClick={() => editor.chain().focus().toggleStrike().run()}
+          label="Strikethrough"
+        />
+        <IconBtn
+          icon={Code2}
+          active={editor.isActive("code")}
+          onClick={() => editor.chain().focus().toggleCode().run()}
+          label="Inline Code"
+        />
         <ColorButton editor={editor} />
+        <IconBtn
+          icon={Eraser}
+          onClick={() => editor.chain().focus().unsetAllMarks().run()}
+          label="Clear Formatting"
+        />
       </ToolGroup>
 
       <ToolGroup>
         <IconBtn
-          icon={Link2}
-          label="Insert link"
-          onClick={() => {
-            const url = window.prompt("Link URL");
-            if (url) editor.chain().focus().setLink({ href: url }).run();
-          }}
+          icon={SubIcon}
+          active={editor.isActive("subscript")}
+          onClick={() => editor.chain().focus().toggleSubscript().run()}
+          label="Subscript"
         />
+        <IconBtn
+          icon={SuperIcon}
+          active={editor.isActive("superscript")}
+          onClick={() => editor.chain().focus().toggleSuperscript().run()}
+          label="Superscript"
+        />
+      </ToolGroup>
+
+      <ToolGroup>
+        <LinkToolbarButton editor={editor} />
         <IconBtn icon={MessageCirclePlus} label="Add comment" />
         <IconBtn icon={ImageIcon} label="Insert image" />
       </ToolGroup>
@@ -683,8 +776,7 @@ function Toolbar({
 
       <ToolGroup>
         <IconBtn icon={Outdent} label="Decrease indent" />
-        <IconBtn icon={Indent} label="Increase indent" />
-        <LineSpacingDropdown />
+        <IconBtn icon={IndentIcon} label="Increase indent" />
       </ToolGroup>
 
       <ToolGroup>
@@ -735,19 +827,15 @@ function ToolGroup({ children }: { children: React.ReactNode }) {
   );
 }
 
-function IconBtn({
-  icon: Icon,
-  onClick,
-  label,
-  active,
-}: {
+const IconBtn = forwardRef<HTMLButtonElement, {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
   onClick?: () => void;
   label: string;
   active?: boolean;
-}) {
+} & React.ButtonHTMLAttributes<HTMLButtonElement>>(({ icon: Icon, onClick, label, active, ...props }, ref) => {
   return (
     <button
+      ref={ref}
       title={label}
       onClick={onClick}
       className={`grid h-8 w-8 place-items-center rounded-md transition-colors ${
@@ -755,13 +843,88 @@ function IconBtn({
           ? "bg-primary-soft text-primary"
           : "text-foreground/75 hover:bg-surface-muted hover:text-foreground"
       }`}
+      {...props}
     >
       <Icon size={15} strokeWidth={1.8} />
     </button>
   );
-}
+});
+IconBtn.displayName = "IconBtn";
 
 /* ---------- Toolbar dropdowns ---------- */
+
+function LinkPopoverWrapper({ editor, children, onOpenChange }: { editor: Editor | null; children: React.ReactNode; onOpenChange?: (open: boolean) => void }) {
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState("");
+
+  const handleOpenChange = (v: boolean) => {
+    setOpen(v);
+    onOpenChange?.(v);
+  };
+
+  const submit = () => {
+    if (!editor) return;
+    if (url) {
+      if (editor.state.selection.empty) {
+        editor.chain().focus().insertContent(`<a href="${url}">${url}</a>`).run();
+      } else {
+        editor.chain().focus().setLink({ href: url }).run();
+      }
+    }
+    setOpen(false);
+    setUrl("");
+  };
+
+  return (
+    <Popover.Root open={open} onOpenChange={handleOpenChange}>
+      <Popover.Trigger asChild>
+        {children}
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          sideOffset={8}
+          className="z-50 w-64 rounded-xl border border-border-soft bg-white p-2 shadow-[0_12px_40px_-12px_rgba(40,40,90,0.15)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
+        >
+          <div className="flex flex-col gap-2">
+            <input
+              autoFocus
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submit();
+              }}
+              placeholder="Paste or type a link..."
+              className="h-8 w-full rounded-md border border-border-soft bg-transparent px-2 text-[13px] outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+            />
+            <div className="flex justify-end gap-1">
+              <button
+                onClick={() => setOpen(false)}
+                className="rounded-md px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-surface-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submit}
+                className="rounded-md bg-primary px-3 py-1 text-[11px] font-medium text-white hover:bg-primary/90"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+function LinkToolbarButton({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <LinkPopoverWrapper editor={editor} onOpenChange={setOpen}>
+      <IconBtn icon={Link2} label="Insert link" active={editor.isActive("link") || open} />
+    </LinkPopoverWrapper>
+  );
+}
 
 function Dropdown({
   label,
@@ -922,24 +1085,28 @@ function TextStyleDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function FontFamilyDropdown() {
-  const [font, setFont] = useState("Inter");
+function FontFamilyDropdown({ editor }: { editor: Editor }) {
+  const currentFont = editor.getAttributes("textStyle").fontFamily || "Inter";
+
   return (
-    <Dropdown label={<span className="w-[70px] truncate text-left">{font}</span>} width={160}>
-      {(close) =>
-        ["Inter", "Space Grotesk", "Instrument Serif", "Georgia", "Mono"].map((f) => (
-          <DropdownItem
-            key={f}
-            active={f === font}
-            onClick={() => {
-              setFont(f);
-              close();
-            }}
-          >
-            <span style={{ fontFamily: f }}>{f}</span>
-          </DropdownItem>
-        ))
-      }
+    <Dropdown label={<span className="w-[100px] truncate text-left">{currentFont}</span>} width={220}>
+      {(close) => (
+        <div className="max-h-[300px] overflow-y-auto pr-1">
+          {EDITOR_FONTS.map((f) => (
+            <DropdownItem
+              key={f}
+              active={f === currentFont}
+              onClick={() => {
+                loadGoogleFont(f);
+                editor.chain().focus().setFontFamily(f).run();
+                close();
+              }}
+            >
+              <span style={{ fontFamily: f, fontSize: "14px" }}>{f}</span>
+            </DropdownItem>
+          ))}
+        </div>
+      )}
     </Dropdown>
   );
 }
@@ -1120,6 +1287,108 @@ function EditorStyles() {
         height: 0;
         pointer-events: none;
       }
+      
+      .colliq-prose hr.page-break { border-top: 2px dashed var(--border-soft); margin: 3em 0; position: relative; page-break-after: always; }
+      .colliq-prose hr.page-break::after { content: "Page Break"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--background); padding: 0 16px; font-size: 11px; font-weight: 500; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.1em; }
+      
+      .hljs-keyword, .hljs-operator, .hljs-pattern-match { color: var(--accent-violet); font-weight: 500; }
+      .hljs-function, .hljs-title { color: var(--cursor-blue); font-weight: 500; }
+      .hljs-string { color: var(--cursor-teal); }
+      .hljs-comment { color: var(--muted-foreground); font-style: italic; }
+      .hljs-number { color: var(--cursor-pink); }
+      .hljs-class, .hljs-type { color: var(--accent-warm); font-weight: 500; }
     `}</style>
+  );
+}
+
+/* ============================================================
+   BUBBLE MENUS
+============================================================ */
+function LinkBubbleMenu({ editor }: { editor: Editor }) {
+  const [url, setUrl] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (editor.isActive("link")) {
+      setUrl(editor.getAttributes("link").href || "");
+    } else {
+      setUrl("");
+      setIsEditing(false);
+    }
+  }, [editor.state.selection]);
+
+  const handleSubmit = () => {
+    if (url) {
+      editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+    } else {
+      editor.chain().focus().unsetLink().run();
+    }
+    setIsEditing(false);
+  };
+
+  return (
+    // @ts-ignore
+    <BubbleMenu
+      editor={editor}
+      shouldShow={({ editor }: any) => editor.isActive("link")}
+      // @ts-ignore
+      tippyOptions={{ duration: 100, placement: "bottom", theme: "light-border" }}
+      className="flex items-center gap-1 rounded-xl border border-border-soft bg-white p-1 shadow-[0_8px_30px_-8px_rgba(40,40,90,0.18)]"
+    >
+      {isEditing ? (
+        <div className="flex items-center gap-1.5 px-1.5">
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSubmit();
+              if (e.key === "Escape") setIsEditing(false);
+            }}
+            placeholder="Paste link..."
+            className="h-7 w-[200px] bg-transparent text-[13px] outline-none"
+            autoFocus
+          />
+          <button onClick={handleSubmit} className="rounded-md bg-primary-soft px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/20">
+            Save
+          </button>
+        </div>
+      ) : (
+        <>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-8 max-w-[200px] items-center gap-1.5 truncate px-2.5 text-[13px] font-medium text-primary hover:underline"
+          >
+            {url}
+          </a>
+          <div className="h-4 w-px bg-border-soft" />
+          <IconBtn icon={Pencil} onClick={() => setIsEditing(true)} label="Edit link" />
+          <IconBtn icon={ExternalLink} onClick={() => window.open(url, "_blank")} label="Open in new tab" />
+          <IconBtn icon={Trash2} onClick={() => editor.chain().focus().unsetLink().run()} label="Remove link" />
+        </>
+      )}
+    </BubbleMenu>
+  );
+}
+
+function TableBubbleMenu({ editor }: { editor: Editor }) {
+  return (
+    // @ts-ignore
+    <BubbleMenu
+      editor={editor}
+      shouldShow={({ editor }: any) => editor.isActive("table")}
+      // @ts-ignore
+      tippyOptions={{ duration: 100, placement: "top", theme: "light-border" }}
+      className="flex items-center gap-0.5 rounded-xl border border-border-soft bg-white p-1 shadow-[0_8px_30px_-8px_rgba(40,40,90,0.18)]"
+    >
+      <IconBtn icon={Columns3} onClick={() => editor.chain().focus().addColumnAfter().run()} label="Add Column" />
+      <IconBtn icon={Rows3} onClick={() => editor.chain().focus().addRowAfter().run()} label="Add Row" />
+      <div className="mx-1 h-4 w-px bg-border-soft" />
+      <IconBtn icon={Trash2} onClick={() => editor.chain().focus().deleteColumn().run()} label="Delete Column" />
+      <IconBtn icon={Trash2} onClick={() => editor.chain().focus().deleteRow().run()} label="Delete Row" />
+      <div className="mx-1 h-4 w-px bg-border-soft" />
+      <IconBtn icon={TableProperties} onClick={() => editor.chain().focus().deleteTable().run()} label="Delete Table" />
+    </BubbleMenu>
   );
 }
