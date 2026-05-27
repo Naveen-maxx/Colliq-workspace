@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { logout } from "@/firebase/auth";
+import { createDocument, getRecentDocuments } from "@/firebase/firestore/documents";
+import { getFavoriteDocuments } from "@/firebase/firestore/favorites";
 import colliqLogo from "@/assets/landing/colliq-logo.png";
 
 export const Route = createFileRoute("/workspace")({
@@ -363,15 +365,43 @@ function Topbar() {
 /* ---------------- Main ---------------- */
 
 function Main() {
+  const { user } = useAuth();
+  const [recentDocs, setRecentDocs] = useState<any[]>([]);
+  const [favoriteDocs, setFavoriteDocs] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    getRecentDocuments(user.uid).then(docs => {
+      setRecentDocs(docs.map(d => ({
+        id: d.id,
+        title: d.title,
+        edited: new Date(d.updatedAt?.toMillis?.() || Date.now()).toLocaleDateString(),
+        people: ["You"],
+        tint: "var(--cursor-violet)"
+      })));
+    });
+
+    getFavoriteDocuments(user.uid).then(docs => {
+      setFavoriteDocs(docs.map(d => ({
+        id: d.id,
+        title: d.title,
+        edited: "Pinned",
+        people: ["You"],
+        tint: "var(--cursor-blue)"
+      })));
+    });
+  }, [user]);
+
   return (
     <main className="mx-auto max-w-6xl px-6 pb-32 pt-10 sm:px-8">
       <StartSection />
-      <DocsSection id="recent" eyebrow="Workspace" title="Recent documents" items={RECENT_DOCS} />
+      <DocsSection id="recent" eyebrow="Workspace" title="Recent documents" items={recentDocs.length > 0 ? recentDocs : []} />
       <DocsSection
         id="favorites"
         eyebrow="Pinned by you"
         title="Favorites"
-        items={FAVORITES}
+        items={favoriteDocs.length > 0 ? favoriteDocs : []}
         compact
       />
       <DocsSection
@@ -438,6 +468,22 @@ function StartCard({
   index: number;
 }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  
+  const handleCreate = async () => {
+    if (blank && user) {
+      try {
+        const id = await createDocument(user.uid);
+        navigate({ to: "/editor/$documentId", params: { documentId: id } });
+      } catch (err: any) {
+        console.error("Failed to create document:", err);
+        alert("Failed to create document. Check console or Firestore permissions: " + err.message);
+      }
+    } else {
+      // Future: handle templates
+    }
+  };
+  
   return (
     <motion.button
       initial={{ opacity: 0, y: 14 }}
@@ -445,7 +491,7 @@ function StartCard({
       transition={{ duration: 0.5, delay: 0.05 * index, ease: [0.16, 1, 0.3, 1] }}
       whileHover={{ y: -3 }}
       whileTap={{ scale: 0.985 }}
-      onClick={() => navigate({ to: "/editor" })}
+      onClick={handleCreate}
       className="group flex flex-col items-center"
     >
       <div
@@ -488,7 +534,7 @@ function StartCard({
 
 /* ---------------- Docs sections ---------------- */
 
-type Doc = { title: string; edited: string; people: string[]; tint: string };
+type Doc = { id?: string; title: string; edited: string; people: string[]; tint: string };
 
 function DocsSection({
   id,
@@ -530,7 +576,11 @@ function DocCard({ doc, index }: { doc: Doc; index: number }) {
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.45, delay: 0.04 * index, ease: [0.16, 1, 0.3, 1] }}
       whileHover={{ y: -2 }}
-      onClick={() => navigate({ to: "/editor" })}
+      onClick={() => {
+        if (doc.id) {
+          navigate({ to: "/editor/$documentId", params: { documentId: doc.id } });
+        }
+      }}
       className="group flex flex-col overflow-hidden rounded-xl border border-border-soft bg-white text-left shadow-[0_1px_2px_rgba(40,40,90,0.04)] transition-all duration-300 hover:shadow-[0_14px_30px_-16px_rgba(40,40,90,0.2)]"
     >
       <div
@@ -615,6 +665,7 @@ function TemplateCard({
 
 function FloatingCreate() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [show, setShow] = useState(false);
   const ticking = useRef(false);
 
@@ -631,6 +682,18 @@ function FloatingCreate() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  const handleCreate = async () => {
+    if (user) {
+      try {
+        const id = await createDocument(user.uid);
+        navigate({ to: "/editor/$documentId", params: { documentId: id } });
+      } catch (err: any) {
+        console.error("Failed to create document:", err);
+        alert("Failed to create document. Check console or Firestore permissions: " + err.message);
+      }
+    }
+  };
+
   return (
     <AnimatePresence>
       {show && (
@@ -642,7 +705,7 @@ function FloatingCreate() {
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.94 }}
           aria-label="Create new document"
-          onClick={() => navigate({ to: "/editor" })}
+          onClick={handleCreate}
           className="fixed bottom-7 right-7 z-50 grid h-14 w-14 place-items-center rounded-full bg-gradient-to-br from-primary to-[color-mix(in_oklab,var(--accent-violet)_75%,var(--primary))] text-white shadow-[0_18px_40px_-12px_color-mix(in_oklab,var(--primary)_55%,transparent)]"
         >
           <Plus size={22} strokeWidth={2} />

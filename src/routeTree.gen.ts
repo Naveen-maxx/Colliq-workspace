@@ -12,8 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as EditorRouteImport } from './routes/editor'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as EditorIndexRouteImport } from './routes/editor.index'
+import { Route as EditorDocumentIdRouteImport } from './routes/editor.$documentId'
 
 const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/workspace',
@@ -30,53 +31,81 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const EditorRoute = EditorRouteImport.update({
-  id: '/editor',
-  path: '/editor',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EditorIndexRoute = EditorIndexRouteImport.update({
+  id: '/editor/',
+  path: '/editor/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EditorDocumentIdRoute = EditorDocumentIdRouteImport.update({
+  id: '/editor/$documentId',
+  path: '/editor/$documentId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/editor': typeof EditorRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
+  '/editor/$documentId': typeof EditorDocumentIdRoute
+  '/editor/': typeof EditorIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/editor': typeof EditorRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
+  '/editor/$documentId': typeof EditorDocumentIdRoute
+  '/editor': typeof EditorIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/editor': typeof EditorRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/workspace': typeof WorkspaceRoute
+  '/editor/$documentId': typeof EditorDocumentIdRoute
+  '/editor/': typeof EditorIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/editor' | '/login' | '/signup' | '/workspace'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/workspace'
+    | '/editor/$documentId'
+    | '/editor/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/editor' | '/login' | '/signup' | '/workspace'
-  id: '__root__' | '/' | '/editor' | '/login' | '/signup' | '/workspace'
+  to:
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/workspace'
+    | '/editor/$documentId'
+    | '/editor'
+  id:
+    | '__root__'
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/workspace'
+    | '/editor/$documentId'
+    | '/editor/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  EditorRoute: typeof EditorRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   WorkspaceRoute: typeof WorkspaceRoute
+  EditorDocumentIdRoute: typeof EditorDocumentIdRoute
+  EditorIndexRoute: typeof EditorIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -102,13 +131,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/editor': {
-      id: '/editor'
-      path: '/editor'
-      fullPath: '/editor'
-      preLoaderRoute: typeof EditorRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -116,15 +138,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/editor/': {
+      id: '/editor/'
+      path: '/editor'
+      fullPath: '/editor/'
+      preLoaderRoute: typeof EditorIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/editor/$documentId': {
+      id: '/editor/$documentId'
+      path: '/editor/$documentId'
+      fullPath: '/editor/$documentId'
+      preLoaderRoute: typeof EditorDocumentIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  EditorRoute: EditorRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   WorkspaceRoute: WorkspaceRoute,
+  EditorDocumentIdRoute: EditorDocumentIdRoute,
+  EditorIndexRoute: EditorIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

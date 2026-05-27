@@ -18,6 +18,8 @@ import { TableHeader } from "@tiptap/extension-table-header";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { Highlight } from "@tiptap/extension-highlight";
 import { SlashCommand, getSlashCommandConfig } from "@/components/editor/slash-command";
+import { getDocument, updateDocument } from "@/firebase/firestore/documents";
+import { toggleFavorite } from "@/firebase/firestore/favorites";
 import {
   FileText,
   Star,
@@ -68,7 +70,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import colliqLogo from "@/assets/landing/colliq-logo.png";
 
-export const Route = createFileRoute("/editor")({
+export const Route = createFileRoute("/editor/$documentId")({
   head: () => ({
     meta: [
       { title: "Editor — Colliq" },
@@ -78,11 +80,14 @@ export const Route = createFileRoute("/editor")({
   component: EditorPage,
 });
 
-type SaveStatus = "idle" | "saving" | "saved";
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 function EditorPage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { documentId } = Route.useParams();
+
+  const [isDocLoading, setIsDocLoading] = useState(true);
 
   const [title, setTitle] = useState("Untitled document");
   const [favorite, setFavorite] = useState(false);
@@ -127,12 +132,43 @@ function EditorPage() {
           "colliq-prose focus:outline-none min-h-[1000px] px-[96px] py-[96px] text-[15.5px] leading-[1.75] text-foreground",
       },
     },
-    onUpdate: () => {
+    onUpdate: ({ editor }) => {
       setSaveStatus("saving");
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => setSaveStatus("saved"), 1200);
+      saveTimer.current = setTimeout(async () => {
+        try {
+          await updateDocument(documentId, { content: editor.getJSON() });
+          setSaveStatus("saved");
+        } catch (e) {
+          setSaveStatus("error");
+        }
+      }, 1200);
     },
   });
+
+  useEffect(() => {
+    if (!user || loading || !editor) return;
+    
+    let isMounted = true;
+    getDocument(documentId).then(doc => {
+      if (!isMounted) return;
+      if (!doc) {
+        navigate({ to: "/workspace" });
+        return;
+      }
+      
+      setTitle(doc.title);
+      setFavorite(doc.favorite);
+      if (doc.content && Object.keys(doc.content).length > 0) {
+        editor.commands.setContent(doc.content, false);
+      }
+      setIsDocLoading(false);
+    }).catch(() => {
+      if (isMounted) navigate({ to: "/workspace" });
+    });
+    
+    return () => { isMounted = false; };
+  }, [documentId, user, loading, navigate, editor]);
 
   useEffect(
     () => () => {
@@ -141,13 +177,26 @@ function EditorPage() {
     [],
   );
 
-  if (loading || !user) {
+  if (loading || !user || isDocLoading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background">
+      <main className="flex min-h-screen items-center justify-center bg-[#F1F2F5]">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </main>
     );
   }
+
+  const handleTitleChange = (newTitle: string) => {
+    setTitle(newTitle);
+    setSaveStatus("saving");
+    updateDocument(documentId, { title: newTitle })
+      .then(() => setSaveStatus("saved"))
+      .catch(() => setSaveStatus("error"));
+  };
+
+  const handleFavoriteToggle = (newFav: boolean) => {
+    setFavorite(newFav);
+    toggleFavorite(documentId, newFav);
+  };
 
   return (
     <div className="min-h-screen bg-[#F1F2F5] text-foreground">
@@ -164,9 +213,9 @@ function EditorPage() {
             <TopHeader
               user={user}
               title={title}
-              setTitle={setTitle}
+              setTitle={handleTitleChange}
               favorite={favorite}
-              setFavorite={setFavorite}
+              setFavorite={handleFavoriteToggle}
               saveStatus={saveStatus}
             />
             <MenuBar editor={editor} />
