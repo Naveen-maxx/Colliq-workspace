@@ -14,6 +14,7 @@ import {
   Code,
   Quote,
   Table,
+  ImageIcon,
 } from "lucide-react";
 
 export interface CommandItem {
@@ -84,6 +85,17 @@ export const getSuggestionItems = ({ query }: { query: string }) => {
           .deleteRange(range)
           .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
           .run();
+      },
+    },
+    {
+      title: "Image",
+      description: "Upload an image.",
+      icon: ImageIcon,
+      command: ({ editor, range }: any) => {
+        editor.chain().focus().deleteRange(range).run();
+        import("@/components/editor/extensions/image-upload").then(({ triggerImageUpload }) => {
+          triggerImageUpload(editor);
+        });
       },
     },
     {

@@ -198,6 +198,7 @@ function Sidebar({
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [active, setActive] = useState("home");
+  const navigate = useNavigate();
 
   const initials = useMemo(() => {
     const src = user.displayName || user.email || "U";
@@ -318,8 +319,7 @@ function Sidebar({
               transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
               className="absolute bottom-[60px] left-3 w-52 overflow-hidden rounded-xl border border-border-soft bg-white p-1.5 shadow-[0_18px_40px_-12px_rgba(40,40,90,0.18)]"
             >
-              <MenuItem icon={UserIcon} label="User Profile" />
-              <MenuItem icon={Settings} label="Settings" />
+              <MenuItem icon={Settings} label="Settings" onClick={() => navigate({ to: "/settings" })} />
               <div className="my-1 h-px bg-border-soft" />
               <MenuItem icon={LogOut} label="Logout" onClick={onLogout} danger />
             </motion.div>

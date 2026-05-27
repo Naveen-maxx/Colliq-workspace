@@ -11,7 +11,8 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import { Color } from "@tiptap/extension-color";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
-import ImageExt from "@tiptap/extension-image";
+import { ResizableImage } from "@/components/editor/extensions/resizable-image";
+import { ImageUpload, triggerImageUpload } from "@/components/editor/extensions/image-upload";
 import { Table as TableExt } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TableHeader } from "@tiptap/extension-table-header";
@@ -147,8 +148,10 @@ function EditorPage() {
       }),
       Placeholder.configure({ placeholder: "Start writing, or press ‘/’ for commands…" }),
       TaskList,
+      TaskList.configure({ HTMLAttributes: { class: "not-prose pl-2" } }),
       TaskItem.configure({ nested: true }),
-      ImageExt,
+      ResizableImage,
+      ImageUpload,
       TableExt.configure({ resizable: true }),
       TableRow,
       TableHeader,
@@ -563,8 +566,7 @@ function MenuBar({ editor }: { editor: Editor | null }) {
         // Handled by LinkPopoverWrapper via MenuBar map
       }
       if (item === "Image") {
-        const url = window.prompt("Image URL");
-        if (url) editor.chain().focus().setImage({ src: url }).run();
+        triggerImageUpload(editor);
       }
     } else if (menu === "Format") {
       if (item === "Bold") editor.chain().focus().toggleBold().run();
@@ -744,7 +746,7 @@ function Toolbar({
       <ToolGroup>
         <LinkToolbarButton editor={editor} />
         <IconBtn icon={MessageCirclePlus} label="Add comment" />
-        <IconBtn icon={ImageIcon} label="Insert image" />
+        <IconBtn icon={ImageIcon} label="Insert image" onClick={() => triggerImageUpload(editor)} />
       </ToolGroup>
 
       <ToolGroup>
