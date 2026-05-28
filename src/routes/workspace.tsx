@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Home,
   Clock,
@@ -24,10 +24,16 @@ import {
   LogOut,
   Trash,
   StarOff,
+  Copy,
+  Pencil,
+  ChevronDown,
+  ArrowUpDown,
+  Check,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { logout } from "@/firebase/auth";
-import { createDocument, getRecentDocuments, deleteDocument } from "@/firebase/firestore/documents";
+import { createDocument, getRecentDocuments, deleteDocument, updateDocument, duplicateDocument } from "@/firebase/firestore/documents";
 import { getFavoriteDocuments, toggleFavorite } from "@/firebase/firestore/favorites";
 import {
   AlertDialog,
@@ -39,6 +45,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { SearchOverlay, type SearchableDoc } from "@/components/workspace/search-overlay";
 import colliqLogo from "@/assets/landing/colliq-logo.png";
 
 export const Route = createFileRoute("/workspace")({
@@ -68,76 +75,11 @@ const START_TEMPLATES = [
   { title: "Research Notes", icon: Microscope },
 ];
 
-const RECENT_DOCS = [
-  {
-    title: "Q3 Product Strategy",
-    edited: "2h ago",
-    people: ["Emma", "Jake"],
-    tint: "var(--cursor-violet)",
-  },
-  {
-    title: "Onboarding Flow Notes",
-    edited: "Yesterday",
-    people: ["Mia"],
-    tint: "var(--cursor-pink)",
-  },
-  {
-    title: "Brand Voice Guidelines",
-    edited: "2d ago",
-    people: ["Alex", "Emma"],
-    tint: "var(--cursor-teal)",
-  },
-  { title: "Weekly Sync — Eng", edited: "3d ago", people: ["Jake"], tint: "var(--cursor-blue)" },
-  {
-    title: "Pricing Page Copy",
-    edited: "5d ago",
-    people: ["Mia", "Alex"],
-    tint: "var(--accent-warm)",
-  },
-  {
-    title: "User Research — Studio",
-    edited: "1w ago",
-    people: ["Emma"],
-    tint: "var(--cursor-violet)",
-  },
-];
-
-const FAVORITES = [
-  { title: "Company Wiki", edited: "Pinned", people: ["Team"], tint: "var(--cursor-blue)" },
-  { title: "Design Principles", edited: "Pinned", people: ["Alex"], tint: "var(--cursor-violet)" },
-  { title: "Hiring Playbook", edited: "Pinned", people: ["Emma"], tint: "var(--cursor-pink)" },
-  { title: "Roadmap 2026", edited: "Pinned", people: ["Jake", "Mia"], tint: "var(--cursor-teal)" },
-];
-
 const SHARED = [
-  {
-    id: "mock-shared-1",
-    title: "Partner Brief — Acme",
-    edited: "Shared 1h ago",
-    people: ["Acme team"],
-    tint: "var(--accent-warm)",
-  },
-  {
-    id: "mock-shared-2",
-    title: "Investor Update — May",
-    edited: "Shared yesterday",
-    people: ["Board"],
-    tint: "var(--cursor-violet)",
-  },
-  {
-    id: "mock-shared-3",
-    title: "Launch Checklist",
-    edited: "Shared 2d ago",
-    people: ["Marketing"],
-    tint: "var(--cursor-pink)",
-  },
-  {
-    id: "mock-shared-4",
-    title: "Customer Interviews",
-    edited: "Shared 4d ago",
-    people: ["Research"],
-    tint: "var(--cursor-teal)",
-  },
+  { id: "mock-shared-1", title: "Partner Brief — Acme", edited: "Shared 1h ago", people: ["Acme team"], tint: "var(--accent-warm)" },
+  { id: "mock-shared-2", title: "Investor Update — May", edited: "Shared yesterday", people: ["Board"], tint: "var(--cursor-violet)" },
+  { id: "mock-shared-3", title: "Launch Checklist", edited: "Shared 2d ago", people: ["Marketing"], tint: "var(--cursor-pink)" },
+  { id: "mock-shared-4", title: "Customer Interviews", edited: "Shared 4d ago", people: ["Research"], tint: "var(--cursor-teal)" },
 ];
 
 const TEMPLATES = [
@@ -152,13 +94,151 @@ const TEMPLATES = [
   { title: "Brainstorming", icon: Lightbulb },
 ];
 
+/* ================================================================
+   TOAST SYSTEM
+================================================================ */
+function Toast({ message, visible }: { message: string; visible: boolean }) {
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0, y: 20, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 20, scale: 0.95 }}
+          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="fixed bottom-8 left-1/2 z-[90] -translate-x-1/2 flex items-center gap-2.5 rounded-full border border-border-soft bg-white px-5 py-3 text-[13.5px] font-medium text-foreground shadow-[0_14px_40px_-10px_rgba(40,40,90,0.2)]"
+        >
+          <div className="grid h-5 w-5 place-items-center rounded-full bg-emerald-100 text-emerald-600">
+            <Check size={12} strokeWidth={2.5} />
+          </div>
+          {message}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/* ================================================================
+   WORKSPACE PAGE
+================================================================ */
 function WorkspacePage() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
+  // Lifted doc state — shared between Main and Topbar search
+  const [recentDocs, setRecentDocs] = useState<any[]>([]);
+  const [favoriteDocs, setFavoriteDocs] = useState<any[]>([]);
+  const [isDocsLoading, setIsDocsLoading] = useState(true);
+  const [docToDelete, setDocToDelete] = useState<Doc | null>(null);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastVisible, setToastVisible] = useState(false);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2500);
+  }, []);
+
+  const refreshDocs = useCallback(() => {
+    if (!user) return;
+
+    const fetchAll = async () => {
+      const [recent, favs] = await Promise.all([
+        getRecentDocuments(user.uid),
+        getFavoriteDocuments(user.uid),
+      ]);
+      setRecentDocs(
+        recent.map((d) => ({
+          id: d.id,
+          title: d.title,
+          edited: formatRelativeTime(d.updatedAt),
+          people: ["You"],
+          tint: "var(--cursor-violet)",
+        }))
+      );
+      setFavoriteDocs(
+        favs.map((d) => ({
+          id: d.id,
+          title: d.title,
+          edited: "Pinned",
+          people: ["You"],
+          tint: "var(--cursor-blue)",
+          updatedAt: d.updatedAt,
+        }))
+      );
+      setIsDocsLoading(false);
+    };
+    fetchAll();
+  }, [user]);
+
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/login" });
   }, [user, loading, navigate]);
+
+  useEffect(() => {
+    refreshDocs();
+  }, [refreshDocs]);
+
+  // Build searchable docs for the search overlay
+  const searchableDocs: SearchableDoc[] = useMemo(() => {
+    const recent: SearchableDoc[] = recentDocs.map((d) => ({
+      id: d.id,
+      title: d.title,
+      edited: d.edited,
+      category: "recent" as const,
+      tint: d.tint,
+    }));
+    const favs: SearchableDoc[] = favoriteDocs
+      .filter((f) => !recent.some((r) => r.id === f.id))
+      .map((d) => ({
+        id: d.id,
+        title: d.title,
+        edited: d.edited,
+        category: "favorite" as const,
+        tint: d.tint,
+      }));
+    return [...recent, ...favs];
+  }, [recentDocs, favoriteDocs]);
+
+  const handleDelete = async () => {
+    if (docToDelete?.id) {
+      if (!docToDelete.id.startsWith("mock-")) {
+        await deleteDocument(docToDelete.id);
+      }
+      setDocToDelete(null);
+      refreshDocs();
+    }
+  };
+
+  const handleUnfavorite = async (id: string) => {
+    try {
+      await toggleFavorite(id, false);
+      refreshDocs();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDuplicate = async (id: string) => {
+    if (!user || !id || id.startsWith("mock-")) return;
+    try {
+      await duplicateDocument(id, user.uid);
+      refreshDocs();
+      showToast("Document duplicated");
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRename = async (id: string, newTitle: string) => {
+    if (!id || id.startsWith("mock-")) return;
+    try {
+      await updateDocument(id, { title: newTitle });
+      refreshDocs();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   if (loading || !user) {
     return (
@@ -178,15 +258,79 @@ function WorkspacePage() {
         }}
       />
       <div className="md:pl-[72px]">
-        <Topbar />
-        <Main />
+        <Topbar searchableDocs={searchableDocs} />
+        <main className="mx-auto max-w-6xl px-6 pb-32 pt-10 sm:px-8">
+          <StartSection />
+          <DocsSection
+            id="recent"
+            eyebrow="Workspace"
+            title="Recent documents"
+            items={recentDocs}
+            loading={isDocsLoading}
+            onDeleteRequest={setDocToDelete}
+            onDuplicate={handleDuplicate}
+            onRename={handleRename}
+            emptyIcon={Clock}
+            emptyTitle="No documents yet"
+            emptyMessage="Create your first document above to get started."
+          />
+          <DocsSection
+            id="favorites"
+            eyebrow="Pinned by you"
+            title="Favorites"
+            items={favoriteDocs}
+            loading={isDocsLoading}
+            compact
+            isFavoriteSection
+            onDeleteRequest={setDocToDelete}
+            onUnfavorite={handleUnfavorite}
+            onDuplicate={handleDuplicate}
+            onRename={handleRename}
+            emptyIcon={Star}
+            emptyTitle="No favorites yet"
+            emptyMessage="Pin your most important documents here for quick access."
+          />
+          <DocsSection
+            id="shared"
+            eyebrow="From your team"
+            title="Shared with you"
+            items={SHARED}
+            loading={false}
+            compact
+            onDeleteRequest={setDocToDelete}
+            emptyIcon={Users}
+            emptyTitle="Nothing shared yet"
+            emptyMessage="Documents shared with you will appear here."
+          />
+          <TemplatesSection />
+
+          <AlertDialog open={!!docToDelete} onOpenChange={(open) => !open && setDocToDelete(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete <strong>{docToDelete?.title}</strong>.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </main>
       </div>
       <FloatingCreate />
+      <Toast message={toastMessage} visible={toastVisible} />
     </div>
   );
 }
 
-/* ---------------- Sidebar ---------------- */
+/* ================================================================
+   SIDEBAR
+================================================================ */
 
 function Sidebar({
   user,
@@ -319,9 +463,9 @@ function Sidebar({
               transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
               className="absolute bottom-[60px] left-3 w-52 overflow-hidden rounded-xl border border-border-soft bg-white p-1.5 shadow-[0_18px_40px_-12px_rgba(40,40,90,0.18)]"
             >
-              <MenuItem icon={Settings} label="Settings" onClick={() => navigate({ to: "/settings" })} />
+              <SidebarMenuItem icon={Settings} label="Settings" onClick={() => navigate({ to: "/settings" })} />
               <div className="my-1 h-px bg-border-soft" />
-              <MenuItem icon={LogOut} label="Logout" onClick={onLogout} danger />
+              <SidebarMenuItem icon={LogOut} label="Logout" onClick={onLogout} danger />
             </motion.div>
           )}
         </AnimatePresence>
@@ -330,7 +474,7 @@ function Sidebar({
   );
 }
 
-function MenuItem({
+function SidebarMenuItem({
   icon: Icon,
   label,
   onClick,
@@ -356,147 +500,28 @@ function MenuItem({
   );
 }
 
-/* ---------------- Topbar ---------------- */
+/* ================================================================
+   TOPBAR
+================================================================ */
 
-function Topbar() {
+function Topbar({ searchableDocs }: { searchableDocs: SearchableDoc[] }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border-soft/70 bg-[#FAFAFA]/80 backdrop-blur-xl">
       <div className="mx-auto flex h-[68px] max-w-6xl items-center px-6">
-        <div className="relative mx-auto w-full max-w-xl">
-          <Search
-            size={15}
-            strokeWidth={1.8}
-            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <input
-            placeholder="Search documents, templates..."
-            className="h-10 w-full rounded-full border border-border-soft bg-white/80 pl-10 pr-4 text-[13.5px] text-foreground placeholder:text-muted-foreground/80 shadow-[0_1px_2px_rgba(40,40,90,0.04)] outline-none transition-all focus:border-primary/40 focus:bg-white focus:shadow-[0_0_0_4px_color-mix(in_oklab,var(--primary)_10%,transparent)]"
-          />
-        </div>
+        <SearchOverlay documents={searchableDocs} />
       </div>
     </header>
   );
 }
 
-/* ---------------- Main ---------------- */
+/* ================================================================
+   EXPORTED TOPHEADER (used by editor)
+================================================================ */
+export { Topbar as TopHeader };
 
-function Main() {
-  const { user } = useAuth();
-  const [recentDocs, setRecentDocs] = useState<any[]>([]);
-  const [favoriteDocs, setFavoriteDocs] = useState<any[]>([]);
-  const [docToDelete, setDocToDelete] = useState<Doc | null>(null);
-
-  const refreshDocs = () => {
-    if (!user) return;
-    
-    getRecentDocuments(user.uid).then(docs => {
-      setRecentDocs(docs.map(d => ({
-        id: d.id,
-        title: d.title,
-        edited: new Date(d.updatedAt?.toMillis?.() || Date.now()).toLocaleDateString(),
-        people: ["You"],
-        tint: "var(--cursor-violet)"
-      })));
-    });
-
-    getFavoriteDocuments(user.uid).then(docs => {
-      setFavoriteDocs(docs.map(d => ({
-        id: d.id,
-        title: d.title,
-        edited: "Pinned",
-        people: ["You"],
-        tint: "var(--cursor-blue)"
-      })));
-    });
-  };
-
-  useEffect(() => {
-    refreshDocs();
-  }, [user]);
-
-  const handleDelete = async () => {
-    if (docToDelete?.id) {
-      if (!docToDelete.id.startsWith("mock-")) {
-        await deleteDocument(docToDelete.id);
-      }
-      setDocToDelete(null);
-      refreshDocs();
-    }
-  };
-
-  const handleUnfavorite = async (id: string) => {
-    try {
-      await toggleFavorite(id, false);
-      await refreshDocs();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  return (
-    <main className="mx-auto max-w-6xl px-6 pb-32 pt-10 sm:px-8">
-      <StartSection />
-      <DocsSection 
-        id="recent" 
-        eyebrow="Workspace" 
-        title="Recent documents" 
-        items={recentDocs.length > 0 ? recentDocs : []} 
-        onDeleteRequest={setDocToDelete}
-      />
-      <DocsSection
-        id="favorites"
-        eyebrow="Pinned by you"
-        title="Favorites"
-        items={favoriteDocs.length > 0 ? favoriteDocs : []}
-        compact
-        isFavoriteSection
-        onDeleteRequest={setDocToDelete}
-        onUnfavorite={handleUnfavorite}
-      />
-      <DocsSection
-        id="shared"
-        eyebrow="From your team"
-        title="Shared with you"
-        items={SHARED}
-        compact
-        onDeleteRequest={setDocToDelete}
-      />
-      <TemplatesSection />
-
-      <AlertDialog open={!!docToDelete} onOpenChange={(open) => !open && setDocToDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete <strong>{docToDelete?.title}</strong>.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </main>
-  );
-}
-
-function SectionHeader({ eyebrow, title }: { eyebrow?: string; title: string }) {
-  return (
-    <div className="mb-5 flex items-end justify-between">
-      <div>
-        {eyebrow && (
-          <p className="mb-1 text-[11.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground/80">
-            {eyebrow}
-          </p>
-        )}
-        <h2 className="font-display text-[22px] font-semibold tracking-tight">{title}</h2>
-      </div>
-    </div>
-  );
-}
+/* ================================================================
+   START SECTION
+================================================================ */
 
 function StartSection() {
   return (
@@ -536,7 +561,7 @@ function StartCard({
 }) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+
   const handleCreate = async () => {
     if (blank && user) {
       try {
@@ -546,11 +571,9 @@ function StartCard({
         console.error("Failed to create document:", err);
         alert("Failed to create document. Check console or Firestore permissions: " + err.message);
       }
-    } else {
-      // Future: handle templates
     }
   };
-  
+
   return (
     <motion.button
       initial={{ opacity: 0, y: 14 }}
@@ -561,11 +584,7 @@ function StartCard({
       onClick={handleCreate}
       className="group flex flex-col items-center"
     >
-      <div
-        className={`relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-xl border border-border-soft bg-white shadow-[0_1px_2px_rgba(40,40,90,0.05)] transition-all duration-300 group-hover:shadow-[0_14px_30px_-14px_rgba(40,40,90,0.25)] ${
-          blank ? "" : ""
-        }`}
-      >
+      <div className="relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-xl border border-border-soft bg-white shadow-[0_1px_2px_rgba(40,40,90,0.05)] transition-all duration-300 group-hover:shadow-[0_14px_30px_-14px_rgba(40,40,90,0.25)]">
         {blank ? (
           <div className="grid h-12 w-12 place-items-center rounded-full bg-primary-soft text-primary transition-transform group-hover:scale-110">
             <Icon size={22} strokeWidth={1.8} />
@@ -599,68 +618,240 @@ function StartCard({
   );
 }
 
-/* ---------------- Docs sections ---------------- */
+/* ================================================================
+   DOCS SECTION
+================================================================ */
 
-type Doc = { id?: string; title: string; edited: string; people: string[]; tint: string };
+type Doc = { id?: string; title: string; edited: string; people: string[]; tint: string; updatedAt?: any };
+
+type SortMode = "newest" | "oldest" | "az" | "za";
 
 function DocsSection({
   id,
   eyebrow,
   title,
   items,
+  loading,
   compact,
   onDeleteRequest,
   onUnfavorite,
-  isFavoriteSection
+  onDuplicate,
+  onRename,
+  isFavoriteSection,
+  emptyIcon: EmptyIcon,
+  emptyTitle,
+  emptyMessage,
 }: {
   id: string;
   eyebrow?: string;
   title: string;
   items: Doc[];
+  loading: boolean;
   compact?: boolean;
   onDeleteRequest?: (doc: Doc) => void;
   onUnfavorite?: (id: string) => void;
+  onDuplicate?: (id: string) => void;
+  onRename?: (id: string, newTitle: string) => void;
   isFavoriteSection?: boolean;
+  emptyIcon?: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+  emptyTitle?: string;
+  emptyMessage?: string;
 }) {
+  const [sort, setSort] = useState<SortMode>("newest");
+  const [sortOpen, setSortOpen] = useState(false);
+
+  const sortedItems = useMemo(() => {
+    const sorted = [...items];
+    switch (sort) {
+      case "oldest":
+        sorted.reverse();
+        break;
+      case "az":
+        sorted.sort((a, b) => a.title.localeCompare(b.title));
+        break;
+      case "za":
+        sorted.sort((a, b) => b.title.localeCompare(a.title));
+        break;
+      default:
+        break; // newest is already the default order from Firestore
+    }
+    return sorted;
+  }, [items, sort]);
+
+  const sortLabels: Record<SortMode, string> = {
+    newest: "Newest first",
+    oldest: "Oldest first",
+    az: "A → Z",
+    za: "Z → A",
+  };
+
   return (
     <section id={id} className="mt-16 scroll-mt-24">
-      <SectionHeader eyebrow={eyebrow} title={title} />
-      <div
-        className={`grid gap-4 ${
-          compact
-            ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
-            : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-        }`}
-      >
-        {items.map((d, i) => (
-          <DocCard 
-            key={d.id || d.title} 
-            doc={d} 
-            index={i} 
-            onDelete={() => onDeleteRequest?.(d)}
-            onUnfavorite={isFavoriteSection && d.id ? () => onUnfavorite?.(d.id as string) : undefined}
-          />
-        ))}
+      <div className="mb-5 flex items-end justify-between">
+        <div>
+          {eyebrow && (
+            <p className="mb-1 text-[11.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground/80">
+              {eyebrow}
+            </p>
+          )}
+          <h2 className="font-display text-[22px] font-semibold tracking-tight">{title}</h2>
+        </div>
+
+        {/* Sort control */}
+        {items.length > 1 && (
+          <div className="relative">
+            <button
+              onClick={() => setSortOpen((o) => !o)}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+            >
+              <ArrowUpDown size={13} strokeWidth={1.8} />
+              {sortLabels[sort]}
+              <ChevronDown size={12} />
+            </button>
+            <AnimatePresence>
+              {sortOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setSortOpen(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, y: 4, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                    transition={{ duration: 0.14 }}
+                    className="absolute right-0 top-full z-40 mt-1 w-40 overflow-hidden rounded-xl border border-border-soft bg-white p-1 shadow-[0_12px_30px_-8px_rgba(40,40,90,0.18)]"
+                  >
+                    {(["newest", "oldest", "az", "za"] as SortMode[]).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => {
+                          setSort(s);
+                          setSortOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
+                          sort === s ? "bg-primary-soft text-foreground" : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                        }`}
+                      >
+                        {sortLabels[s]}
+                      </button>
+                    ))}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
+
+      {/* Loading skeleton */}
+      {loading ? (
+        <div
+          className={`grid gap-4 ${
+            compact ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+          }`}
+        >
+          {Array.from({ length: compact ? 4 : 3 }).map((_, i) => (
+            <SkeletonDocCard key={i} index={i} />
+          ))}
+        </div>
+      ) : sortedItems.length === 0 ? (
+        /* Empty state */
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border-soft bg-white/60 py-16 text-center"
+        >
+          {EmptyIcon && <EmptyIcon size={36} strokeWidth={1} className="mb-3 text-muted-foreground/25" />}
+          <p className="text-[15px] font-medium text-foreground/80">{emptyTitle}</p>
+          <p className="mt-1 max-w-xs text-[13px] text-muted-foreground/70">{emptyMessage}</p>
+        </motion.div>
+      ) : (
+        <div
+          className={`grid gap-4 ${
+            compact ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+          }`}
+        >
+          {sortedItems.map((d, i) => (
+            <DocCard
+              key={d.id || d.title}
+              doc={d}
+              index={i}
+              onDelete={() => onDeleteRequest?.(d)}
+              onUnfavorite={isFavoriteSection && d.id ? () => onUnfavorite?.(d.id as string) : undefined}
+              onDuplicate={d.id && !d.id.startsWith("mock-") ? () => onDuplicate?.(d.id as string) : undefined}
+              onRename={d.id && !d.id.startsWith("mock-") ? (newTitle: string) => onRename?.(d.id as string, newTitle) : undefined}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
 
-function DocCard({ doc, index, onDelete, onUnfavorite }: { doc: Doc; index: number; onDelete?: () => void; onUnfavorite?: () => void }) {
-  const navigate = useNavigate();
+function SkeletonDocCard({ index }: { index: number }) {
   return (
-    <motion.button
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: index * 0.05 }}
+      className="overflow-hidden rounded-xl border border-border-soft bg-white"
+    >
+      <div className="h-28 w-full animate-pulse bg-gradient-to-br from-surface-muted to-white" />
+      <div className="px-3.5 py-3">
+        <div className="h-3.5 w-3/4 animate-pulse rounded-full bg-foreground/8" />
+        <div className="mt-2 h-2.5 w-1/2 animate-pulse rounded-full bg-foreground/5" />
+      </div>
+    </motion.div>
+  );
+}
+
+function DocCard({
+  doc,
+  index,
+  onDelete,
+  onUnfavorite,
+  onDuplicate,
+  onRename,
+}: {
+  doc: Doc;
+  index: number;
+  onDelete?: () => void;
+  onUnfavorite?: () => void;
+  onDuplicate?: () => void;
+  onRename?: (newTitle: string) => void;
+}) {
+  const navigate = useNavigate();
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(doc.title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (renaming) {
+      setRenameValue(doc.title);
+      setTimeout(() => inputRef.current?.select(), 0);
+    }
+  }, [renaming, doc.title]);
+
+  const commitRename = () => {
+    if (renameValue.trim() && renameValue.trim() !== doc.title) {
+      onRename?.(renameValue.trim());
+    }
+    setRenaming(false);
+  };
+
+  return (
+    <motion.div
       initial={{ opacity: 0, y: 12 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.45, delay: 0.04 * index, ease: [0.16, 1, 0.3, 1] }}
       whileHover={{ y: -2 }}
       onClick={() => {
+        if (renaming) return;
         if (doc.id && !doc.id.startsWith("mock-")) {
           navigate({ to: "/editor/$documentId", params: { documentId: doc.id } });
         }
       }}
-      className="group relative flex flex-col overflow-hidden rounded-xl border border-border-soft bg-white text-left shadow-[0_1px_2px_rgba(40,40,90,0.04)] transition-all duration-300 hover:shadow-[0_14px_30px_-16px_rgba(40,40,90,0.2)]"
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-border-soft bg-white text-left shadow-[0_1px_2px_rgba(40,40,90,0.04)] transition-all duration-300 hover:shadow-[0_14px_30px_-16px_rgba(40,40,90,0.2)]"
     >
       <div
         className="relative h-28 w-full overflow-hidden"
@@ -677,50 +868,120 @@ function DocCard({ doc, index, onDelete, onUnfavorite }: { doc: Doc; index: numb
             <div className="h-1 w-9/12 rounded-full bg-foreground/6" />
           </div>
         </div>
-        <FileText
-          size={14}
-          strokeWidth={1.7}
-          className="absolute right-3 top-3 text-muted-foreground/60"
-        />
+        <FileText size={14} strokeWidth={1.7} className="absolute right-3 top-3 text-muted-foreground/60" />
       </div>
       <div className="flex w-full flex-col gap-1 px-3.5 py-3">
-        <p className="truncate text-[13.5px] font-medium text-foreground">{doc.title}</p>
+        {renaming ? (
+          <input
+            ref={inputRef}
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") setRenaming(false);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="truncate rounded-md bg-primary-soft/50 px-1.5 py-0.5 text-[13.5px] font-medium text-foreground outline-none ring-1 ring-primary/30"
+          />
+        ) : (
+          <p className="truncate text-[13.5px] font-medium text-foreground">{doc.title}</p>
+        )}
         <div className="flex items-center justify-between text-[11.5px] text-muted-foreground">
           <span>{doc.edited}</span>
           <span className="truncate pl-2">{doc.people.join(" • ")}</span>
         </div>
       </div>
-      
-      {(onDelete || onUnfavorite) && (
+
+      {/* Hover actions */}
+      {(onDelete || onUnfavorite || onDuplicate || onRename) && !renaming && (
         <div className="absolute bottom-3 right-3 flex items-center gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          {onRename && (
+            <CardAction
+              icon={Pencil}
+              label="Rename"
+              onClick={(e) => {
+                e.stopPropagation();
+                setRenaming(true);
+              }}
+            />
+          )}
+          {onDuplicate && (
+            <CardAction
+              icon={Copy}
+              label="Duplicate"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicate();
+              }}
+            />
+          )}
           {onUnfavorite && (
-            <div 
-              onClick={(e) => { e.stopPropagation(); onUnfavorite(); }}
-              className="grid h-7 w-7 place-items-center rounded-md border border-border-soft bg-white/80 text-muted-foreground shadow-sm hover:bg-white hover:text-primary backdrop-blur-md transition-colors"
-            >
-              <StarOff size={14} strokeWidth={1.8} />
-            </div>
+            <CardAction
+              icon={StarOff}
+              label="Unfavorite"
+              onClick={(e) => {
+                e.stopPropagation();
+                onUnfavorite();
+              }}
+            />
           )}
           {onDelete && (
-            <div 
-              onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              className="grid h-7 w-7 place-items-center rounded-md border border-border-soft bg-white/80 text-muted-foreground shadow-sm hover:bg-destructive hover:text-destructive-foreground hover:border-destructive/30 backdrop-blur-md transition-colors"
-            >
-              <Trash size={14} strokeWidth={1.8} />
-            </div>
+            <CardAction
+              icon={Trash}
+              label="Delete"
+              danger
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            />
           )}
         </div>
       )}
-    </motion.button>
+    </motion.div>
   );
 }
 
-/* ---------------- Templates ---------------- */
+function CardAction({
+  icon: Icon,
+  label,
+  danger,
+  onClick,
+}: {
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+  label: string;
+  danger?: boolean;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      title={label}
+      className={`grid h-7 w-7 place-items-center rounded-md border border-border-soft bg-white/80 text-muted-foreground shadow-sm backdrop-blur-md transition-colors ${
+        danger
+          ? "hover:border-destructive/30 hover:bg-destructive hover:text-destructive-foreground"
+          : "hover:bg-white hover:text-primary"
+      }`}
+    >
+      <Icon size={14} strokeWidth={1.8} />
+    </div>
+  );
+}
+
+/* ================================================================
+   TEMPLATES
+================================================================ */
 
 function TemplatesSection() {
   return (
     <section id="templates" className="mt-16 scroll-mt-24">
-      <SectionHeader eyebrow="Build faster" title="Templates" />
+      <div className="mb-5">
+        <p className="mb-1 text-[11.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground/80">
+          Build faster
+        </p>
+        <h2 className="font-display text-[22px] font-semibold tracking-tight">Templates</h2>
+      </div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3">
         {TEMPLATES.map((t, i) => (
           <TemplateCard key={t.title} index={i} {...t} />
@@ -739,7 +1000,6 @@ function TemplateCard({
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
   index: number;
 }) {
-  const navigate = useNavigate();
   return (
     <motion.button
       initial={{ opacity: 0, y: 12 }}
@@ -747,7 +1007,6 @@ function TemplateCard({
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.45, delay: 0.04 * index, ease: [0.16, 1, 0.3, 1] }}
       whileHover={{ y: -3 }}
-      onClick={() => navigate({ to: "/editor" })}
       className="group flex items-center gap-4 rounded-xl border border-border-soft bg-white p-4 text-left shadow-[0_1px_2px_rgba(40,40,90,0.04)] transition-all duration-300 hover:shadow-[0_14px_30px_-16px_rgba(40,40,90,0.2)]"
     >
       <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary-soft to-white text-primary transition-transform group-hover:scale-105">
@@ -761,7 +1020,9 @@ function TemplateCard({
   );
 }
 
-/* ---------------- Floating create ---------------- */
+/* ================================================================
+   FLOATING CREATE
+================================================================ */
 
 function FloatingCreate() {
   const navigate = useNavigate();
@@ -789,7 +1050,6 @@ function FloatingCreate() {
         navigate({ to: "/editor/$documentId", params: { documentId: id } });
       } catch (err: any) {
         console.error("Failed to create document:", err);
-        alert("Failed to create document. Check console or Firestore permissions: " + err.message);
       }
     }
   };
@@ -813,4 +1073,25 @@ function FloatingCreate() {
       )}
     </AnimatePresence>
   );
+}
+
+/* ================================================================
+   UTILS
+================================================================ */
+
+function formatRelativeTime(timestamp: any): string {
+  if (!timestamp?.toMillis) return "Just now";
+  const ms = Date.now() - timestamp.toMillis();
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 4) return `${weeks}w ago`;
+  return new Date(timestamp.toMillis()).toLocaleDateString();
 }

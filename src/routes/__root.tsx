@@ -8,6 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { CommandPalette } from "@/components/command-palette";
 
 import appCss from "../styles.css?url";
 
@@ -116,6 +117,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <Outlet />
+        <CommandPalette />
       </AuthProvider>
     </QueryClientProvider>
   );

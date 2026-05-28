@@ -86,3 +86,25 @@ export async function getRecentDocuments(ownerId: string): Promise<DocumentData[
   
   return docs;
 }
+
+export async function duplicateDocument(sourceId: string, ownerId: string): Promise<string> {
+  const source = await getDocument(sourceId);
+  if (!source) throw new Error("Source document not found");
+
+  const docRef = doc(collection(db, "documents"));
+  const newDoc: DocumentData = {
+    id: docRef.id,
+    title: source.title.endsWith(" (Copy)") ? source.title : `${source.title} (Copy)`,
+    content: source.content,
+    ownerId,
+    collaborators: [],
+    favorite: false,
+    templateType: source.templateType,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    lastOpenedAt: serverTimestamp(),
+    deleted: false,
+  };
+  await setDoc(docRef, newDoc);
+  return docRef.id;
+}

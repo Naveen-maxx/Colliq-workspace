@@ -155,4 +155,22 @@
   .marquee-mask {
     mask-image: linear-gradient(to bottom, transparent, black 12%, black 88%, transparent);
   }
+
+  /* Command palette (cmdk) */
+  [cmdk-group-heading] {
+    padding: 6px 12px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: color-mix(in oklab, var(--muted-foreground) 65%, transparent);
+  }
+  [cmdk-list] {
+    transition: height 100ms ease;
+  }
+  [cmdk-separator] {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--border-soft);
+  }
 }

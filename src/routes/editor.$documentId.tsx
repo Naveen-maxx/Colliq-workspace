@@ -31,8 +31,13 @@ import { PageBreak } from "@/components/editor/extensions/page-break";
 import { CodeBlockComponent } from "@/components/editor/extensions/code-block";
 import { EDITOR_FONTS, loadGoogleFont } from "@/lib/fonts";
 import { SlashCommand, getSlashCommandConfig } from "@/components/editor/slash-command";
-import { getDocument, updateDocument } from "@/firebase/firestore/documents";
+import { getDocument, updateDocument, deleteDocument, createDocument } from "@/firebase/firestore/documents";
 import { toggleFavorite } from "@/firebase/firestore/favorites";
+import { FileBrowserModal } from "@/components/editor/file-browser-modal";
+import { createVersionSnapshot } from "@/firebase/firestore/versions";
+import { VersionHistorySidebar } from "@/components/editor/version-history-sidebar";
+import CharacterCount from "@tiptap/extension-character-count";
+import { exportToDocx, exportToHtml, exportToTxt, exportToPdf, importDocx, importTxt } from "@/components/editor/import-export";
 
 const lowlight = createLowlight(common);
 
@@ -53,6 +58,7 @@ import {
   Redo2,
   SpellCheck,
   Link2,
+  LayoutTemplate,
   Image as ImageIcon,
   ListChecks,
   List,
@@ -124,6 +130,12 @@ function EditorPage() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [chromeCollapsed, setChromeCollapsed] = useState(false);
   const [zoom, setZoom] = useState(100);
+  const [fileBrowserOpen, setFileBrowserOpen] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [pageMode, setPageMode] = useState(true);
+  const [pageWidth, setPageWidth] = useState<"narrow" | "standard" | "wide">("standard");
+  const [wordCountOpen, setWordCountOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -166,6 +178,7 @@ function EditorPage() {
       }).configure({ lowlight }),
       Indent,
       PageBreak,
+      CharacterCount,
       SlashCommand.configure({
         suggestion: getSlashCommandConfig(),
       }),
@@ -243,6 +256,46 @@ function EditorPage() {
     toggleFavorite(documentId, newFav);
   };
 
+  const handleNew = async () => {
+    const newId = await createDocument(user.uid);
+    navigate({ to: "/editor/$documentId", params: { documentId: newId } });
+  };
+
+  const handleRename = () => {
+    document.getElementById("document-title-button")?.click();
+  };
+
+  const handleDelete = async () => {
+    if (confirm("Are you sure you want to permanently delete this document?")) {
+      await deleteDocument(documentId);
+      navigate({ to: "/workspace" });
+    }
+  };
+
+  const handleSave = async () => {
+    if (!editor) return;
+    setSaveStatus("saving");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    try {
+      await updateDocument(documentId, { content: editor.getJSON() });
+      await createVersionSnapshot(documentId, title, editor.getJSON(), "Manual save by user");
+      setSaveStatus("saved");
+    } catch (e) {
+      setSaveStatus("error");
+    }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editor) return;
+    if (file.name.endsWith(".docx")) {
+      await importDocx(file, editor);
+    } else if (file.name.endsWith(".txt")) {
+      await importTxt(file, editor);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   return (
     <div className="min-h-screen bg-[#F1F2F5] text-foreground">
       <AnimatePresence initial={false}>
@@ -263,10 +316,28 @@ function EditorPage() {
               setFavorite={handleFavoriteToggle}
               saveStatus={saveStatus}
             />
-            <MenuBar editor={editor} />
+            <MenuBar 
+              editor={editor}
+              onNewDocument={handleNew}
+              onRenameDocument={handleRename}
+              onDeleteDocument={handleDelete}
+              onSaveDocument={handleSave}
+              onOpenDocument={() => setFileBrowserOpen(true)}
+              onVersionHistory={() => setVersionHistoryOpen(true)}
+              onSetPageWidth={setPageWidth}
+              onTogglePageMode={() => setPageMode((p) => !p)}
+              onWordCount={() => setWordCountOpen(true)}
+              onImport={() => fileInputRef.current?.click()}
+            />
           </motion.div>
         )}
       </AnimatePresence>
+
+      <input type="file" ref={fileInputRef} className="hidden" accept=".docx,.txt" onChange={handleImportFile} />
+
+      <FileBrowserModal isOpen={fileBrowserOpen} onClose={() => setFileBrowserOpen(false)} />
+      <VersionHistorySidebar isOpen={versionHistoryOpen} onClose={() => setVersionHistoryOpen(false)} documentId={documentId} editor={editor} />
+      {wordCountOpen && <WordCountModal editor={editor} onClose={() => setWordCountOpen(false)} />}
 
       <Toolbar
         editor={editor}
@@ -276,9 +347,9 @@ function EditorPage() {
         onToggleCollapse={() => setChromeCollapsed((c) => !c)}
       />
 
-      <Ruler />
+      {pageMode && <Ruler />}
 
-      <DocumentCanvas zoom={zoom}>
+      <DocumentCanvas zoom={zoom} pageMode={pageMode} pageWidth={pageWidth}>
         <EditorContent editor={editor} />
         {editor && <LinkBubbleMenu editor={editor} />}
         {editor && <TableBubbleMenu editor={editor} />}
@@ -403,6 +474,7 @@ function TitleInput({ value, onChange }: { value: string; onChange: (v: string) 
 
   return (
     <button
+      id="document-title-button"
       onClick={() => setEditing(true)}
       className="min-w-0 max-w-[300px] truncate rounded-md px-2 py-1 text-left font-display text-[15.5px] font-medium text-foreground transition-colors hover:bg-surface-muted"
     >
@@ -484,11 +556,15 @@ const MENUS: Record<string, MenuItem[]> = {
     { label: "New", icon: FilePlus },
     { label: "Open", icon: FolderOpen },
     { label: "Share", icon: Share2 },
-    { label: "Download", icon: Download },
     { label: "Rename", icon: Pencil },
     { label: "Delete", icon: Trash2 },
     { label: "Save", icon: Save },
     { label: "Version History", icon: History },
+    { label: "Import DOCX/TXT", icon: FolderOpen },
+    { label: "Download DOCX", icon: Download },
+    { label: "Download PDF", icon: Download },
+    { label: "Download HTML", icon: Download },
+    { label: "Download TXT", icon: Download },
   ],
   Edit: [
     { label: "Undo", icon: Undo2 },
@@ -497,10 +573,11 @@ const MENUS: Record<string, MenuItem[]> = {
     { label: "Delete", icon: Trash2 },
   ],
   View: [
-    { label: "Editing mode", icon: Pencil },
-    { label: "Viewing mode", icon: Eye },
-    { label: "Comments", icon: MessageSquare },
     { label: "Full screen", icon: Maximize },
+    { label: "Page mode", icon: LayoutTemplate },
+    { label: "Narrow width", icon: Eye },
+    { label: "Standard width", icon: Eye },
+    { label: "Wide width", icon: Eye },
   ],
   Insert: [
     { label: "Image", icon: ImageIcon },
@@ -534,7 +611,31 @@ const MENUS: Record<string, MenuItem[]> = {
   ],
 };
 
-function MenuBar({ editor }: { editor: Editor | null }) {
+function MenuBar({ 
+  editor,
+  onNewDocument,
+  onRenameDocument,
+  onDeleteDocument,
+  onSaveDocument,
+  onVersionHistory,
+  onOpenDocument,
+  onSetPageWidth,
+  onTogglePageMode,
+  onWordCount,
+  onImport
+}: { 
+  editor: Editor | null;
+  onNewDocument?: () => void;
+  onRenameDocument?: () => void;
+  onDeleteDocument?: () => void;
+  onSaveDocument?: () => void;
+  onVersionHistory?: () => void;
+  onOpenDocument?: () => void;
+  onSetPageWidth?: (width: "narrow" | "standard" | "wide") => void;
+  onTogglePageMode?: () => void;
+  onWordCount?: () => void;
+  onImport?: () => void;
+}) {
   const [open, setOpen] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -585,7 +686,32 @@ function MenuBar({ editor }: { editor: Editor | null }) {
       if (item === "Checklist") editor.chain().focus().toggleTaskList().run();
       if (item === "Clear Formatting") editor.chain().focus().unsetAllMarks().run();
     } else if (menu === "File" || menu === "View" || menu === "Tools") {
-      // Future backend phases
+      if (menu === "File") {
+        if (item === "New") onNewDocument?.();
+        if (item === "Open") onOpenDocument?.();
+        if (item === "Rename") onRenameDocument?.();
+        if (item === "Delete") onDeleteDocument?.();
+        if (item === "Save") onSaveDocument?.();
+        if (item === "Version History") onVersionHistory?.();
+        if (item === "Import DOCX/TXT") onImport?.();
+        if (item === "Download DOCX") exportToDocx(editor, document.title);
+        if (item === "Download HTML") exportToHtml(editor, document.title);
+        if (item === "Download TXT") exportToTxt(editor, document.title);
+        if (item === "Download PDF") exportToPdf();
+      }
+      if (menu === "View") {
+        if (item === "Full screen") {
+          if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+          else document.exitFullscreen().catch(() => {});
+        }
+        if (item === "Page mode") onTogglePageMode?.();
+        if (item === "Narrow width") onSetPageWidth?.("narrow");
+        if (item === "Standard width") onSetPageWidth?.("standard");
+        if (item === "Wide width") onSetPageWidth?.("wide");
+      }
+      if (menu === "Tools") {
+        if (item === "Word count") onWordCount?.();
+      }
       console.log(`Action: ${menu} -> ${item}`);
     }
   };
@@ -1218,7 +1344,24 @@ function Ruler() {
 /* ============================================================
    DOCUMENT CANVAS
 ============================================================ */
-function DocumentCanvas({ zoom, children }: { zoom: number; children: React.ReactNode }) {
+function DocumentCanvas({ zoom, pageMode, pageWidth, children }: { zoom: number; pageMode: boolean; pageWidth: "narrow" | "standard" | "wide"; children: React.ReactNode }) {
+  const widthClass = pageWidth === "narrow" ? "max-w-[650px]" : pageWidth === "wide" ? "max-w-[1000px]" : "max-w-[816px]";
+  
+  if (!pageMode) {
+    return (
+      <div className="relative flex justify-center px-6 pb-32 pt-8">
+        <motion.div
+          animate={{ scale: zoom / 100 }}
+          transition={{ type: "spring", stiffness: 240, damping: 30 }}
+          style={{ transformOrigin: "top center" }}
+          className={`w-full ${widthClass}`}
+        >
+          {children}
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex justify-center px-6 pb-32 pt-8">
       {/* Left vertical ruler */}
@@ -1239,7 +1382,7 @@ function DocumentCanvas({ zoom, children }: { zoom: number; children: React.Reac
         animate={{ scale: zoom / 100 }}
         transition={{ type: "spring", stiffness: 240, damping: 30 }}
         style={{ transformOrigin: "top center" }}
-        className="w-full max-w-[816px]"
+        className={`w-full ${widthClass}`}
       >
         <div className="rounded-[2px] bg-white shadow-[0_1px_3px_rgba(40,40,90,0.06),0_24px_60px_-30px_rgba(40,40,90,0.25)] ring-1 ring-border-soft/70">
           {children}
@@ -1392,5 +1535,23 @@ function TableBubbleMenu({ editor }: { editor: Editor }) {
       <div className="mx-1 h-4 w-px bg-border-soft" />
       <IconBtn icon={TableProperties} onClick={() => editor.chain().focus().deleteTable().run()} label="Delete Table" />
     </BubbleMenu>
+  );
+}
+
+/* ============================================================
+   WORD COUNT MODAL
+============================================================ */
+function WordCountModal({ editor, onClose }: { editor: Editor; onClose: () => void }) {
+  if (!editor) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/5" onClick={onClose}>
+      <div className="relative w-64 rounded-xl border border-border-soft bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-3 text-[13px] font-semibold text-foreground">Word Count</h3>
+        <div className="flex flex-col gap-2 text-[13px] text-muted-foreground">
+          <div className="flex justify-between"><span>Words</span> <span className="font-medium text-foreground">{editor.storage.characterCount.words()}</span></div>
+          <div className="flex justify-between"><span>Characters</span> <span className="font-medium text-foreground">{editor.storage.characterCount.characters()}</span></div>
+        </div>
+      </div>
+    </div>
   );
 }
