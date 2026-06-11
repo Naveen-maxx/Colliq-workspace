@@ -6,6 +6,8 @@ import { getRecentDocuments } from "@/firebase/firestore/documents";
 import { upsertUserProfile } from "@/firebase/firestore";
 import { uploadImage } from "@/services/cloudinary/uploadImage";
 import { ChevronLeft, Camera, Loader2, Copy, LogOut, Check } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import { motion } from "framer-motion";
 
 export const Route = createFileRoute("/settings")({
@@ -67,7 +69,8 @@ function SettingsPage() {
       // Force re-render with new user object
       setUser({ ...user });
     } catch (err: any) {
-      alert(err.message || "Failed to upload avatar");
+      console.error("Failed to update avatar:", err);
+      toast.error(err.message || "Failed to upload avatar");
     } finally {
       setUploadingAvatar(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

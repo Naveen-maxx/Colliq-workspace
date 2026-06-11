@@ -1,9 +1,10 @@
 import { NodeViewWrapper, NodeViewProps } from "@tiptap/react";
 import { useState, useRef, useEffect, MouseEvent } from "react";
-import { AlignLeft, AlignCenter, AlignRight, Maximize, Loader2 } from "lucide-react";
+import { AlignLeft, AlignCenter, AlignRight, Maximize, Loader2, RotateCw, Crop } from "lucide-react";
+import { toast } from "sonner";
 
 export function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps) {
-  const { src, width, align, caption, loading } = node.attrs;
+  const { src, width, align, caption, loading, rotate } = node.attrs;
   const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -88,6 +89,23 @@ export function ResizableImageView({ node, updateAttributes, selected }: NodeVie
         >
           <Maximize size={14} />
         </button>
+        <div className="mx-0.5 h-4 w-px bg-border-soft" />
+        <button
+          type="button"
+          onClick={() => updateAttributes({ rotate: (rotate + 90) % 360 })}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-surface-muted"
+        >
+          <RotateCw size={14} />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            toast.info("Interactive cropping will be available in the next phase.");
+          }}
+          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-surface-muted"
+        >
+          <Crop size={14} />
+        </button>
       </div>
 
       {/* IMAGE / LOADING STATE */}
@@ -101,7 +119,8 @@ export function ResizableImageView({ node, updateAttributes, selected }: NodeVie
             ref={imageRef}
             src={src}
             alt={caption || "Editor Image"}
-            className="block h-auto w-full rounded-xl object-contain"
+            className="block h-auto w-full rounded-xl object-contain transition-transform duration-200"
+            style={{ transform: `rotate(${rotate}deg)` }}
           />
         )}
 

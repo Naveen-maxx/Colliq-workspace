@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { CommandPalette } from "@/components/command-palette";
+import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
 
@@ -118,6 +119,7 @@ function RootComponent() {
       <AuthProvider>
         <Outlet />
         <CommandPalette />
+        <Toaster position="bottom-center" richColors closeButton />
       </AuthProvider>
     </QueryClientProvider>
   );

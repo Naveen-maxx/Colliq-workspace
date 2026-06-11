@@ -1,7 +1,9 @@
 import type { Editor } from "@tiptap/react";
 import mammoth from "mammoth";
-import { saveAs } from "file-saver";
+import pkg from "file-saver";
+const { saveAs } = pkg;
 import { asBlob } from "html-docx-js-typescript";
+import { toast } from "sonner";
 
 export async function exportToDocx(editor: Editor, title: string) {
   try {
@@ -16,7 +18,7 @@ export async function exportToDocx(editor: Editor, title: string) {
     saveAs(blob as Blob, `${title || "document"}.docx`);
   } catch (err) {
     console.error("DOCX Export failed:", err);
-    alert("Failed to export DOCX.");
+    toast.error("Failed to export DOCX.");
   }
 }
 
@@ -49,7 +51,7 @@ export async function importDocx(file: File, editor: Editor) {
     editor.commands.setContent(result.value);
   } catch (err) {
     console.error("DOCX Import failed:", err);
-    alert("Failed to import DOCX.");
+    toast.error("Failed to import DOCX.");
   }
 }
 
@@ -61,6 +63,6 @@ export async function importTxt(file: File, editor: Editor) {
     editor.commands.setContent(html);
   } catch (err) {
     console.error("TXT Import failed:", err);
-    alert("Failed to import TXT.");
+    toast.error("Failed to import TXT.");
   }
 }

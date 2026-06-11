@@ -38,6 +38,10 @@ import { createVersionSnapshot } from "@/firebase/firestore/versions";
 import { VersionHistorySidebar } from "@/components/editor/version-history-sidebar";
 import CharacterCount from "@tiptap/extension-character-count";
 import { exportToDocx, exportToHtml, exportToTxt, exportToPdf, importDocx, importTxt } from "@/components/editor/import-export";
+import { FontSize } from "@/components/editor/extensions/font-size";
+import { TextFormattingToolbar } from "@/components/editor/text-formatting-toolbar";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "sonner";
 
 const lowlight = createLowlight(common);
 
@@ -46,6 +50,7 @@ import {
   Star,
   Cloud,
   CloudUpload,
+  Check,
   CheckCircle2,
   History,
   MessageSquare,
@@ -134,7 +139,10 @@ function EditorPage() {
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [pageMode, setPageMode] = useState(true);
   const [pageWidth, setPageWidth] = useState<"narrow" | "standard" | "wide">("standard");
+  const [marginState, setMarginState] = useState<"normal" | "narrow" | "moderate" | "wide" | "custom">("normal");
+  const [customMargins, setCustomMargins] = useState({ top: 96, bottom: 96, left: 96, right: 96 });
   const [wordCountOpen, setWordCountOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -150,6 +158,7 @@ function EditorPage() {
       }),
       Underline,
       TextStyle,
+      FontSize,
       FontFamily,
       Color,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
@@ -159,7 +168,6 @@ function EditorPage() {
         HTMLAttributes: { class: "text-primary underline underline-offset-2 transition-colors hover:text-primary-soft cursor-pointer" },
       }),
       Placeholder.configure({ placeholder: "Start writing, or press ‘/’ for commands…" }),
-      TaskList,
       TaskList.configure({ HTMLAttributes: { class: "not-prose pl-2" } }),
       TaskItem.configure({ nested: true }),
       ResizableImage,
@@ -203,6 +211,24 @@ function EditorPage() {
       }, 1200);
     },
   });
+
+  useEffect(() => {
+    if (!editor) return;
+    let padding = { top: 96, right: 96, bottom: 96, left: 96 };
+    if (marginState === "narrow") padding = { top: 48, right: 48, bottom: 48, left: 48 };
+    if (marginState === "moderate") padding = { top: 96, right: 72, bottom: 96, left: 72 };
+    if (marginState === "wide") padding = { top: 96, right: 192, bottom: 96, left: 192 };
+    if (marginState === "custom") padding = customMargins;
+    
+    editor.setOptions({
+      editorProps: {
+        attributes: {
+          class: "colliq-prose focus:outline-none min-h-[1056px] text-[15.5px] leading-[1.75] text-foreground",
+          style: `padding: ${padding.top}px ${padding.right}px ${padding.bottom}px ${padding.left}px;`,
+        }
+      }
+    });
+  }, [editor, marginState, customMargins]);
 
   useEffect(() => {
     if (!user || loading || !editor) return;
@@ -266,9 +292,16 @@ function EditorPage() {
   };
 
   const handleDelete = async () => {
-    if (confirm("Are you sure you want to permanently delete this document?")) {
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    try {
       await deleteDocument(documentId);
+      toast.success("Document deleted");
       navigate({ to: "/workspace" });
+    } catch (e) {
+      toast.error("Failed to delete document");
     }
   };
 
@@ -328,6 +361,8 @@ function EditorPage() {
               onTogglePageMode={() => setPageMode((p) => !p)}
               onWordCount={() => setWordCountOpen(true)}
               onImport={() => fileInputRef.current?.click()}
+              marginState={marginState}
+              onSetMarginState={setMarginState}
             />
           </motion.div>
         )}
@@ -349,11 +384,28 @@ function EditorPage() {
 
       {pageMode && <Ruler />}
 
-      <DocumentCanvas zoom={zoom} pageMode={pageMode} pageWidth={pageWidth}>
+      <DocumentCanvas 
+        zoom={zoom} 
+        pageMode={pageMode} 
+        pageWidth={pageWidth}
+        marginState={marginState}
+        customMargins={customMargins}
+      >
         <EditorContent editor={editor} />
+        {editor && <TextFormattingToolbar editor={editor} />}
         {editor && <LinkBubbleMenu editor={editor} />}
         {editor && <TableBubbleMenu editor={editor} />}
       </DocumentCanvas>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        title="Delete Document"
+        description="Are you sure you want to permanently delete this document? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
 
       <EditorStyles />
     </div>
@@ -571,6 +623,10 @@ const MENUS: Record<string, MenuItem[]> = {
     { label: "Redo", icon: Redo2 },
     { label: "Select All", icon: Type },
     { label: "Delete", icon: Trash2 },
+    { label: "Margins: Normal", icon: LayoutTemplate },
+    { label: "Margins: Narrow", icon: LayoutTemplate },
+    { label: "Margins: Moderate", icon: LayoutTemplate },
+    { label: "Margins: Wide", icon: LayoutTemplate },
   ],
   View: [
     { label: "Full screen", icon: Maximize },
@@ -622,7 +678,9 @@ function MenuBar({
   onSetPageWidth,
   onTogglePageMode,
   onWordCount,
-  onImport
+  onImport,
+  marginState,
+  onSetMarginState
 }: { 
   editor: Editor | null;
   onNewDocument?: () => void;
@@ -635,6 +693,8 @@ function MenuBar({
   onTogglePageMode?: () => void;
   onWordCount?: () => void;
   onImport?: () => void;
+  marginState?: string;
+  onSetMarginState?: (margin: any) => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -656,6 +716,10 @@ function MenuBar({
       if (item === "Redo") editor.chain().focus().redo().run();
       if (item === "Select All") editor.chain().focus().selectAll().run();
       if (item === "Delete") editor.chain().focus().deleteSelection().run();
+      if (item === "Margins: Normal") onSetMarginState?.("normal");
+      if (item === "Margins: Narrow") onSetMarginState?.("narrow");
+      if (item === "Margins: Moderate") onSetMarginState?.("moderate");
+      if (item === "Margins: Wide") onSetMarginState?.("wide");
     } else if (menu === "Insert") {
       if (item === "Table")
         editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
@@ -745,6 +809,12 @@ function MenuBar({
               >
                 {MENUS[m].map((item) => {
                   const Icon = item.icon;
+                  const isActiveMargin = 
+                    (item.label === "Margins: Normal" && marginState === "normal") ||
+                    (item.label === "Margins: Narrow" && marginState === "narrow") ||
+                    (item.label === "Margins: Moderate" && marginState === "moderate") ||
+                    (item.label === "Margins: Wide" && marginState === "wide");
+
                   const btn = (
                     <button
                       key={item.label}
@@ -755,10 +825,15 @@ function MenuBar({
                           handleItem(m, item.label);
                         }
                       }}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-foreground/80 transition-colors hover:bg-surface-muted hover:text-foreground"
+                      className={`flex w-full items-center justify-between gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors hover:bg-surface-muted ${
+                        isActiveMargin ? "bg-primary-soft text-primary font-medium" : "text-foreground/80 hover:text-foreground"
+                      }`}
                     >
-                      <Icon size={14} className="text-muted-foreground" />
-                      {item.label}
+                      <div className="flex items-center gap-2.5">
+                        <Icon size={14} className={isActiveMargin ? "text-primary" : "text-muted-foreground"} />
+                        {item.label}
+                      </div>
+                      {isActiveMargin && <Check size={14} />}
                     </button>
                   );
 
@@ -1344,9 +1419,38 @@ function Ruler() {
 /* ============================================================
    DOCUMENT CANVAS
 ============================================================ */
-function DocumentCanvas({ zoom, pageMode, pageWidth, children }: { zoom: number; pageMode: boolean; pageWidth: "narrow" | "standard" | "wide"; children: React.ReactNode }) {
+function DocumentCanvas({
+  zoom,
+  pageMode,
+  pageWidth,
+  marginState,
+  customMargins,
+  children,
+}: {
+  zoom: number;
+  pageMode: boolean;
+  pageWidth: "narrow" | "standard" | "wide";
+  marginState: string;
+  customMargins: any;
+  children: React.ReactNode;
+}) {
   const widthClass = pageWidth === "narrow" ? "max-w-[650px]" : pageWidth === "wide" ? "max-w-[1000px]" : "max-w-[816px]";
-  
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [editorHeight, setEditorHeight] = useState(1056);
+  const pageHeight = 1056; // Standard US Letter/A4-ish height at 96dpi
+  const pageGap = 32;
+
+  useEffect(() => {
+    if (!pageMode || !contentRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        setEditorHeight(entry.contentRect.height);
+      }
+    });
+    observer.observe(contentRef.current);
+    return () => observer.disconnect();
+  }, [pageMode]);
+
   if (!pageMode) {
     return (
       <div className="relative flex justify-center px-6 pb-32 pt-8">
@@ -1362,6 +1466,9 @@ function DocumentCanvas({ zoom, pageMode, pageWidth, children }: { zoom: number;
     );
   }
 
+  const numPages = Math.max(1, Math.ceil(editorHeight / pageHeight));
+  const pages = Array.from({ length: numPages });
+
   return (
     <div className="relative flex justify-center px-6 pb-32 pt-8">
       {/* Left vertical ruler */}
@@ -1370,9 +1477,7 @@ function DocumentCanvas({ zoom, pageMode, pageWidth, children }: { zoom: number;
           {Array.from({ length: 40 }).map((_, i) => (
             <div
               key={i}
-              className={
-                i % 4 === 0 ? "h-px w-2.5 bg-foreground/25" : "h-px w-1.5 bg-foreground/12"
-              }
+              className={i % 4 === 0 ? "h-px w-2.5 bg-foreground/25" : "h-px w-1.5 bg-foreground/12"}
             />
           ))}
         </div>
@@ -1382,10 +1487,35 @@ function DocumentCanvas({ zoom, pageMode, pageWidth, children }: { zoom: number;
         animate={{ scale: zoom / 100 }}
         transition={{ type: "spring", stiffness: 240, damping: 30 }}
         style={{ transformOrigin: "top center" }}
-        className={`w-full ${widthClass}`}
+        className={`relative w-full ${widthClass}`}
       >
-        <div className="rounded-[2px] bg-white shadow-[0_1px_3px_rgba(40,40,90,0.06),0_24px_60px_-30px_rgba(40,40,90,0.25)] ring-1 ring-border-soft/70">
-          {children}
+        {/* Continuous Canvas Background */}
+        <div 
+          className="relative w-full rounded-[4px] bg-white shadow-[0_1px_3px_rgba(40,40,90,0.06),0_24px_60px_-30px_rgba(40,40,90,0.25)] ring-1 ring-border-soft/70 transition-all"
+          style={{ minHeight: pageHeight }}
+        >
+          {/* Subtle Page Boundaries (Visual Only) */}
+          <div className="pointer-events-none absolute inset-0 z-0 rounded-[4px]">
+            {pages.map((_, i) => {
+              if (i === 0) return null; // No line at the very top
+              const topPos = i * pageHeight;
+              return (
+                <div key={i} className="absolute left-0 right-0" style={{ top: topPos }}>
+                  <div className="flex w-full items-center justify-center opacity-100">
+                    <div className="h-[2px] w-full bg-gradient-to-r from-transparent via-slate-300 to-transparent dark:via-slate-600" />
+                  </div>
+                  <div className="absolute -top-[14px] left-full ml-6 flex items-center rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm dark:bg-slate-800 dark:text-slate-400">
+                    Page {i + 1}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* The single continuous TipTap editor sits on top */}
+          <div ref={contentRef} className="relative z-10 min-h-[1056px]">
+            {children}
+          </div>
         </div>
       </motion.div>
 
@@ -1477,7 +1607,7 @@ function LinkBubbleMenu({ editor }: { editor: Editor }) {
       editor={editor}
       shouldShow={({ editor }: any) => editor.isActive("link")}
       // @ts-ignore
-      tippyOptions={{ duration: 100, placement: "bottom", theme: "light-border" }}
+      tippyOptions={{ duration: 100, placement: "bottom", theme: "light-border", interactive: true }}
       className="flex items-center gap-1 rounded-xl border border-border-soft bg-white p-1 shadow-[0_8px_30px_-8px_rgba(40,40,90,0.18)]"
     >
       {isEditing ? (
@@ -1524,7 +1654,7 @@ function TableBubbleMenu({ editor }: { editor: Editor }) {
       editor={editor}
       shouldShow={({ editor }: any) => editor.isActive("table")}
       // @ts-ignore
-      tippyOptions={{ duration: 100, placement: "top", theme: "light-border" }}
+      tippyOptions={{ duration: 100, placement: "top", theme: "light-border", interactive: true }}
       className="flex items-center gap-0.5 rounded-xl border border-border-soft bg-white p-1 shadow-[0_8px_30px_-8px_rgba(40,40,90,0.18)]"
     >
       <IconBtn icon={Columns3} onClick={() => editor.chain().focus().addColumnAfter().run()} label="Add Column" />

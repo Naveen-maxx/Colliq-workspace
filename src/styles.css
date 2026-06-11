@@ -1,8 +1,9 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 @import "tailwindcss" source(none);
-@source "../src";
+@import "tailwindcss/theme.css";
 @import "tw-animate-css";
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@source "../src";
 
 @custom-variant dark (&:is(.dark *));
 

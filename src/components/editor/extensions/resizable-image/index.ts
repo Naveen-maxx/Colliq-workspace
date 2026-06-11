@@ -23,6 +23,12 @@ export const ResizableImage = Image.extend({
       caption: {
         default: "",
       },
+      rotate: {
+        default: 0,
+      },
+      crop: {
+        default: null,
+      },
       loading: {
         default: false,
       },

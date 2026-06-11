@@ -35,6 +35,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { logout } from "@/firebase/auth";
 import { createDocument, getRecentDocuments, deleteDocument, updateDocument, duplicateDocument } from "@/firebase/firestore/documents";
 import { getFavoriteDocuments, toggleFavorite } from "@/firebase/firestore/favorites";
+import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -569,7 +570,7 @@ function StartCard({
         navigate({ to: "/editor/$documentId", params: { documentId: id } });
       } catch (err: any) {
         console.error("Failed to create document:", err);
-        alert("Failed to create document. Check console or Firestore permissions: " + err.message);
+        toast.error("Failed to create document. Check console or Firestore permissions.");
       }
     }
   };

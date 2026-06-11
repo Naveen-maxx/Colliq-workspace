@@ -1,6 +1,7 @@
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { uploadImage, ALLOWED_IMAGE_TYPES } from "@/services/cloudinary/uploadImage";
+import { toast } from "sonner";
 
 export const ImageUpload = Extension.create({
   name: "imageUpload",
@@ -50,7 +51,7 @@ export const ImageUpload = Extension.create({
 
 export function handleImageUpload(file: File, view: any, pos: number) {
   if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-    alert("Invalid file type. Please upload an image.");
+    toast.error("Invalid file type. Please upload an image.");
     return;
   }
 
@@ -102,7 +103,7 @@ export function handleImageUpload(file: File, view: any, pos: number) {
         tr.delete(posFound, posFound + 1);
         view.dispatch(tr);
       }
-      alert(err.message);
+      toast.error(err.message);
     });
 }
 
