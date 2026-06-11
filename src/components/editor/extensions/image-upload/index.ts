@@ -83,6 +83,7 @@ export function handleImageUpload(file: File, view: any, pos: number) {
         tr.setNodeMarkup(posFound, null, {
           ...view.state.doc.nodeAt(posFound)?.attrs,
           src: url,
+          originalSrc: url,
           loading: false,
           id: null
         });

@@ -40,6 +40,7 @@ import CharacterCount from "@tiptap/extension-character-count";
 import { exportToDocx, exportToHtml, exportToTxt, exportToPdf, importDocx, importTxt } from "@/components/editor/import-export";
 import { FontSize } from "@/components/editor/extensions/font-size";
 import { TextFormattingToolbar } from "@/components/editor/text-formatting-toolbar";
+import { useEditorTypography, UnifiedFontFamilyDropdown, UnifiedFontSizeDropdown, UnifiedFontSizeControl } from "@/components/editor/typography-controls";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 
@@ -877,6 +878,8 @@ function Toolbar({
     );
   }
 
+  const { activeFont, activeSize } = useEditorTypography(editor);
+
   return (
     <div className="sticky top-0 z-30 flex flex-wrap items-center gap-x-1 gap-y-2 border-b border-border-soft bg-[#FAFAFA]/95 px-4 py-2 backdrop-blur-xl">
       <ToolGroup>
@@ -887,8 +890,8 @@ function Toolbar({
 
       <ZoomDropdown zoom={zoom} setZoom={setZoom} />
       <TextStyleDropdown editor={editor} />
-      <FontFamilyDropdown editor={editor} />
-      <FontSizeControl />
+      <UnifiedFontFamilyDropdown editor={editor} activeFont={activeFont} />
+      <UnifiedFontSizeControl editor={editor} activeSize={activeSize} />
 
       <ToolGroup>
         <IconBtn
@@ -1288,55 +1291,7 @@ function TextStyleDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function FontFamilyDropdown({ editor }: { editor: Editor }) {
-  const currentFont = editor.getAttributes("textStyle").fontFamily || "Inter";
-
-  return (
-    <Dropdown label={<span className="w-[100px] truncate text-left">{currentFont}</span>} width={220}>
-      {(close) => (
-        <div className="max-h-[300px] overflow-y-auto pr-1">
-          {EDITOR_FONTS.map((f) => (
-            <DropdownItem
-              key={f}
-              active={f === currentFont}
-              onClick={() => {
-                loadGoogleFont(f);
-                editor.chain().focus().setFontFamily(f).run();
-                close();
-              }}
-            >
-              <span style={{ fontFamily: f, fontSize: "14px" }}>{f}</span>
-            </DropdownItem>
-          ))}
-        </div>
-      )}
-    </Dropdown>
-  );
-}
-
-function FontSizeControl() {
-  const [size, setSize] = useState(11);
-  return (
-    <div className="flex items-center gap-0.5">
-      <button
-        onClick={() => setSize((s) => Math.max(8, s - 1))}
-        className="grid h-7 w-7 place-items-center rounded-md text-foreground/70 transition-colors hover:bg-surface-muted"
-      >
-        <Minus size={12} strokeWidth={2} />
-      </button>
-      <div className="grid h-7 min-w-[28px] place-items-center rounded-md border border-border-soft bg-white px-1.5 text-[12px] font-medium">
-        {size}
-      </div>
-      <button
-        onClick={() => setSize((s) => Math.min(96, s + 1))}
-        className="grid h-7 w-7 place-items-center rounded-md text-foreground/70 transition-colors hover:bg-surface-muted"
-      >
-        <span className="text-[14px] leading-none">+</span>
-      </button>
-    </div>
-  );
-}
-
+// unified controls replaced FontFamilyDropdown and FontSizeControl
 function LineSpacingDropdown() {
   return (
     <Dropdown label={<span className="text-[12.5px]">Spacing</span>} width={140}>

@@ -20,7 +20,7 @@ import {
   CheckSquare,
 } from "lucide-react";
 import { toast } from "sonner";
-import { loadGoogleFont } from "@/lib/fonts";
+import { useEditorTypography, UnifiedFontFamilyDropdown, UnifiedFontSizeDropdown } from "@/components/editor/typography-controls";
 
 export function TextFormattingToolbar({ editor }: { editor: Editor | null }) {
   if (!editor) return null;
@@ -42,60 +42,17 @@ export function TextFormattingToolbar({ editor }: { editor: Editor | null }) {
     return true;
   };
 
-  const fonts = [
-    { name: "Inter", value: "Inter" },
-    { name: "Space Grotesk", value: "Space Grotesk" },
-    { name: "Instrument Serif", value: "Instrument Serif" },
-    { name: "Roboto", value: "Roboto" },
-    { name: "Playfair Display", value: "Playfair Display" },
-    { name: "JetBrains Mono", value: "JetBrains Mono" },
-  ];
-
-  const sizes = ["12px", "14px", "15.5px", "18px", "24px", "32px"];
   const colors = ["#000000", "#4B5563", "#EF4444", "#F59E0B", "#10B981", "#3B82F6", "#8B5CF6"];
   const highlights = ["transparent", "#FEF08A", "#BBF7D0", "#BFDBFE", "#FBCFE8"];
 
-  const [activeFont, setActiveFont] = useState(fonts[0]);
-  const [activeSize, setActiveSize] = useState("15.5px");
-  const [showFonts, setShowFonts] = useState(false);
-  const [showSizes, setShowSizes] = useState(false);
+  const { activeFont, activeSize } = useEditorTypography(editor);
+
   const [showColors, setShowColors] = useState(false);
   const [showHighlights, setShowHighlights] = useState(false);
   const [showAlignments, setShowAlignments] = useState(false);
   const [showLists, setShowLists] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
-
-  // Sync active states natively with TipTap
-  useEffect(() => {
-    const update = () => {
-      const attrs = editor.getAttributes("textStyle");
-      if (attrs.fontFamily) {
-        const cleanedFont = attrs.fontFamily.replace(/['"]/g, "");
-        const f = fonts.find(f => f.value.toLowerCase() === cleanedFont.toLowerCase());
-        if (f) {
-          setActiveFont(f);
-        } else {
-          setActiveFont({ name: cleanedFont, value: cleanedFont });
-        }
-      } else {
-        setActiveFont(fonts[0]); // Default
-      }
-      
-      if (attrs.fontSize) {
-        setActiveSize(attrs.fontSize);
-      } else {
-        setActiveSize("15.5px");
-      }
-    };
-    
-    editor.on("selectionUpdate", update);
-    editor.on("transaction", update);
-    return () => {
-      editor.off("selectionUpdate", update);
-      editor.off("transaction", update);
-    };
-  }, [editor]);
 
   return (
     // @ts-ignore
@@ -106,90 +63,9 @@ export function TextFormattingToolbar({ editor }: { editor: Editor | null }) {
       tippyOptions={{ duration: 150, animation: "shift-away", placement: "top", interactive: true }}
       className="flex items-center gap-1 rounded-xl border border-border-soft bg-white p-1 shadow-[0_12px_36px_-12px_rgba(40,40,90,0.25)]"
     >
-      {/* Font Family */}
-      <div className="relative">
-        <button
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
-            setShowFonts(!showFonts);
-            setShowSizes(false);
-            setShowColors(false);
-            setShowHighlights(false);
-            setShowAlignments(false);
-            setShowLists(false);
-            setShowLinkInput(false);
-          }}
-          className="flex h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] font-medium text-foreground hover:bg-surface-muted"
-        >
-          <span className="w-16 truncate text-left">{activeFont.name}</span>
-          <ChevronDown size={14} className="text-muted-foreground" />
-        </button>
-        {showFonts && (
-          <div className="absolute left-0 top-full mt-1 w-40 rounded-xl border border-border-soft bg-white p-1 shadow-lg z-50">
-            {fonts.map((f) => (
-              <button
-                key={f.name}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  loadGoogleFont(f.value);
-                  editor.chain().focus().setFontFamily(f.value).run();
-                  setShowFonts(false);
-                }}
-                className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-[12.5px] hover:bg-surface-muted ${
-                  activeFont.name === f.name ? "text-primary" : "text-foreground"
-                }`}
-                style={{ fontFamily: f.value }}
-              >
-                {f.name}
-                {activeFont.name === f.name && <Check size={14} />}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
+      <UnifiedFontFamilyDropdown editor={editor} activeFont={activeFont} />
       <div className="h-4 w-px bg-border-soft" />
-
-      {/* Font Size */}
-      <div className="relative">
-        <button
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={() => {
-            setShowSizes(!showSizes);
-            setShowFonts(false);
-            setShowColors(false);
-            setShowHighlights(false);
-            setShowAlignments(false);
-            setShowLists(false);
-            setShowLinkInput(false);
-          }}
-          className="flex h-8 items-center gap-1 rounded-md px-2 text-[12.5px] font-medium text-foreground hover:bg-surface-muted"
-        >
-          <span className="w-10 text-center">{activeSize}</span>
-          <ChevronDown size={14} className="text-muted-foreground" />
-        </button>
-        {showSizes && (
-          <div className="absolute left-0 top-full mt-1 w-24 rounded-xl border border-border-soft bg-white p-1 shadow-lg z-50">
-            {sizes.map((s) => (
-              <button
-                key={s}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  editor.chain().focus().setFontSize(s).run();
-                  setShowSizes(false);
-                }}
-                className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-[12.5px] hover:bg-surface-muted ${
-                  activeSize === s ? "text-primary font-semibold" : "text-foreground"
-                }`}
-              >
-                {s}
-                {activeSize === s && <Check size={14} />}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
+      <UnifiedFontSizeDropdown editor={editor} activeSize={activeSize} />
       <div className="h-4 w-px bg-border-soft" />
 
       {/* Formatting Toggles */}
@@ -224,8 +100,6 @@ export function TextFormattingToolbar({ editor }: { editor: Editor | null }) {
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             setShowColors(!showColors);
-            setShowFonts(false);
-            setShowSizes(false);
             setShowHighlights(false);
             setShowAlignments(false);
             setShowLists(false);
@@ -259,8 +133,6 @@ export function TextFormattingToolbar({ editor }: { editor: Editor | null }) {
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             setShowHighlights(!showHighlights);
-            setShowFonts(false);
-            setShowSizes(false);
             setShowColors(false);
             setShowAlignments(false);
             setShowLists(false);
@@ -301,8 +173,6 @@ export function TextFormattingToolbar({ editor }: { editor: Editor | null }) {
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             setShowAlignments(!showAlignments);
-            setShowFonts(false);
-            setShowSizes(false);
             setShowColors(false);
             setShowHighlights(false);
             setShowLists(false);
@@ -354,8 +224,6 @@ export function TextFormattingToolbar({ editor }: { editor: Editor | null }) {
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             setShowLists(!showLists);
-            setShowFonts(false);
-            setShowSizes(false);
             setShowColors(false);
             setShowHighlights(false);
             setShowAlignments(false);
@@ -412,8 +280,6 @@ export function TextFormattingToolbar({ editor }: { editor: Editor | null }) {
             setShowLinkInput(true);
             
             // Close others
-            setShowFonts(false);
-            setShowSizes(false);
             setShowColors(false);
             setShowHighlights(false);
             setShowAlignments(false);
