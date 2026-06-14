@@ -36,6 +36,7 @@ import { logout } from "@/firebase/auth";
 import { createDocument, getRecentDocuments, deleteDocument, updateDocument, duplicateDocument } from "@/firebase/firestore/documents";
 import { getFavoriteDocuments, toggleFavorite } from "@/firebase/firestore/favorites";
 import { toast } from "sonner";
+import { TEMPLATES, TEMPLATE_TITLE_MAP } from "@/lib/templates";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,7 +84,7 @@ const SHARED = [
   { id: "mock-shared-4", title: "Customer Interviews", edited: "Shared 4d ago", people: ["Research"], tint: "var(--cursor-teal)" },
 ];
 
-const TEMPLATES = [
+const TEMPLATE_CARDS = [
   { title: "Class Notes", icon: GraduationCap },
   { title: "Resume", icon: FileSignature },
   { title: "Letter", icon: Mail },
@@ -564,14 +565,21 @@ function StartCard({
   const { user } = useAuth();
 
   const handleCreate = async () => {
-    if (blank && user) {
-      try {
-        const id = await createDocument(user.uid);
-        navigate({ to: "/editor/$documentId", params: { documentId: id } });
-      } catch (err: any) {
-        console.error("Failed to create document:", err);
-        toast.error("Failed to create document. Check console or Firestore permissions.");
-      }
+    if (!user) return;
+    try {
+      const templateKey = TEMPLATE_TITLE_MAP[title];
+      const template = templateKey ? TEMPLATES[templateKey] : null;
+
+      const id = await createDocument(user.uid, template ? {
+        title: template.title,
+        content: template.content,
+        templateType: template.id,
+      } : undefined);
+
+      navigate({ to: "/editor/$documentId", params: { documentId: id } });
+    } catch (err: any) {
+      console.error("Failed to create document:", err);
+      toast.error("Failed to create document. Please try again.");
     }
   };
 
@@ -984,7 +992,7 @@ function TemplatesSection() {
         <h2 className="font-display text-[22px] font-semibold tracking-tight">Templates</h2>
       </div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3">
-        {TEMPLATES.map((t, i) => (
+        {TEMPLATE_CARDS.map((t, i) => (
           <TemplateCard key={t.title} index={i} {...t} />
         ))}
       </div>
@@ -1001,6 +1009,32 @@ function TemplateCard({
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
   index: number;
 }) {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+
+  const handleOpen = async () => {
+    if (!user || loading) return;
+    setLoading(true);
+    try {
+      const templateKey = TEMPLATE_TITLE_MAP[title];
+      const template = templateKey ? TEMPLATES[templateKey] : null;
+
+      const id = await createDocument(user.uid, template ? {
+        title: template.title,
+        content: template.content,
+        templateType: template.id,
+      } : { title });
+
+      navigate({ to: "/editor/$documentId", params: { documentId: id } });
+    } catch (err: any) {
+      console.error("Failed to open template:", err);
+      toast.error("Failed to open template. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <motion.button
       initial={{ opacity: 0, y: 12 }}
@@ -1008,14 +1042,18 @@ function TemplateCard({
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.45, delay: 0.04 * index, ease: [0.16, 1, 0.3, 1] }}
       whileHover={{ y: -3 }}
-      className="group flex items-center gap-4 rounded-xl border border-border-soft bg-white p-4 text-left shadow-[0_1px_2px_rgba(40,40,90,0.04)] transition-all duration-300 hover:shadow-[0_14px_30px_-16px_rgba(40,40,90,0.2)]"
+      onClick={handleOpen}
+      disabled={loading}
+      className="group flex items-center gap-4 rounded-xl border border-border-soft bg-white p-4 text-left shadow-[0_1px_2px_rgba(40,40,90,0.04)] transition-all duration-300 hover:shadow-[0_14px_30px_-16px_rgba(40,40,90,0.2)] disabled:opacity-60"
     >
       <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary-soft to-white text-primary transition-transform group-hover:scale-105">
-        <Icon size={20} strokeWidth={1.7} />
+        {loading
+          ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          : <Icon size={20} strokeWidth={1.7} />}
       </div>
       <div className="min-w-0">
         <p className="truncate text-[14px] font-medium text-foreground">{title}</p>
-        <p className="truncate text-[12px] text-muted-foreground">Open template</p>
+        <p className="truncate text-[12px] text-muted-foreground">{loading ? "Creating…" : "Use this template"}</p>
       </div>
     </motion.button>
   );

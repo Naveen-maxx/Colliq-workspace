@@ -19,16 +19,22 @@ export type DocumentData = {
  * Scalable Firestore architecture for Documents.
  */
 
-export async function createDocument(ownerId: string): Promise<string> {
+export interface CreateDocumentOptions {
+  title?: string;
+  content?: any;       // TipTap JSON document
+  templateType?: string;
+}
+
+export async function createDocument(ownerId: string, options?: CreateDocumentOptions): Promise<string> {
   const docRef = doc(collection(db, "documents"));
   const newDoc: DocumentData = {
     id: docRef.id,
-    title: "Untitled document",
-    content: "", // Empty string to prevent TipTap from crashing on empty JSON object
+    title: options?.title ?? "Untitled document",
+    content: options?.content ?? "", // Empty string to prevent TipTap from crashing on empty JSON
     ownerId,
     collaborators: [],
     favorite: false,
-    templateType: null,
+    templateType: options?.templateType ?? null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     lastOpenedAt: serverTimestamp(),
@@ -37,6 +43,7 @@ export async function createDocument(ownerId: string): Promise<string> {
   await setDoc(docRef, newDoc);
   return docRef.id;
 }
+
 
 export async function getDocument(documentId: string): Promise<DocumentData | null> {
   const docRef = doc(db, "documents", documentId);
