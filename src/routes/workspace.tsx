@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { SearchOverlay, type SearchableDoc } from "@/components/workspace/search-overlay";
 import colliqLogo from "@/assets/landing/colliq-logo.png";
+import { DocumentPreview } from "@/components/workspace/document-preview";
 
 export const Route = createFileRoute("/workspace")({
   head: () => ({
@@ -156,6 +157,7 @@ function WorkspacePage() {
           edited: formatRelativeTime(d.updatedAt),
           people: ["You"],
           tint: "var(--cursor-violet)",
+          content: d.content,
         }))
       );
       setFavoriteDocs(
@@ -166,6 +168,7 @@ function WorkspacePage() {
           people: ["You"],
           tint: "var(--cursor-blue)",
           updatedAt: d.updatedAt,
+          content: d.content,
         }))
       );
       setIsDocsLoading(false);
@@ -564,12 +567,12 @@ function StartCard({
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const templateKey = TEMPLATE_TITLE_MAP[title];
+  const template = templateKey ? TEMPLATES[templateKey] : null;
+
   const handleCreate = async () => {
     if (!user) return;
     try {
-      const templateKey = TEMPLATE_TITLE_MAP[title];
-      const template = templateKey ? TEMPLATES[templateKey] : null;
-
       const id = await createDocument(user.uid, template ? {
         title: template.title,
         content: template.content,
@@ -591,47 +594,34 @@ function StartCard({
       whileHover={{ y: -3 }}
       whileTap={{ scale: 0.985 }}
       onClick={handleCreate}
-      className="group flex flex-col items-center"
+      className="group flex flex-col items-start"
     >
-      <div className="relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-xl border border-border-soft bg-white shadow-[0_1px_2px_rgba(40,40,90,0.05)] transition-all duration-300 group-hover:shadow-[0_14px_30px_-14px_rgba(40,40,90,0.25)]">
+      <div className="relative flex aspect-[1/1.414] w-full items-center justify-center overflow-hidden rounded-[4px] border border-[#dadce0] bg-white transition-all duration-300 group-hover:border-[#1a73e8] group-hover:shadow-[0_1px_3px_rgba(0,0,0,0.12)]">
         {blank ? (
-          <div className="grid h-12 w-12 place-items-center rounded-full bg-primary-soft text-primary transition-transform group-hover:scale-110">
-            <Icon size={22} strokeWidth={1.8} />
+          <div className="grid h-16 w-16 place-items-center">
+            {/* The Google Docs plus sign is multi-colored, but we can use our primary color or the provided icon */}
+            <Icon size={36} strokeWidth={1.5} className="text-[#1a73e8]" />
           </div>
         ) : (
-          <div className="flex h-full w-full flex-col p-3.5">
-            <div className="mb-2 flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-border" />
-              <span className="h-1.5 w-1.5 rounded-full bg-border" />
-              <span className="h-1.5 w-1.5 rounded-full bg-border" />
-            </div>
-            <div className="space-y-1.5">
-              <div className="h-1.5 w-10/12 rounded-full bg-foreground/15" />
-              <div className="h-1 w-9/12 rounded-full bg-foreground/8" />
-              <div className="h-1 w-7/12 rounded-full bg-foreground/8" />
-            </div>
-            <div className="mt-3 space-y-1">
-              <div className="h-1 w-full rounded-full bg-foreground/6" />
-              <div className="h-1 w-11/12 rounded-full bg-foreground/6" />
-              <div className="h-1 w-10/12 rounded-full bg-foreground/6" />
-              <div className="h-1 w-9/12 rounded-full bg-foreground/6" />
-            </div>
-            <div className="mt-auto">
-              <Icon size={16} strokeWidth={1.6} className="text-muted-foreground/70" />
-            </div>
+          <div className="absolute inset-0 bg-white">
+            <DocumentPreview content={template?.content} />
           </div>
         )}
       </div>
-      <p className="mt-2.5 text-[13px] font-medium text-foreground">{title}</p>
+      <div className="mt-3 w-full text-left flex items-center justify-between">
+        <p className="truncate text-[14px] font-medium text-[#202124]">{title}</p>
+        {!blank && <Icon size={14} strokeWidth={1.8} className="text-gray-400" />}
+      </div>
     </motion.button>
   );
 }
+
 
 /* ================================================================
    DOCS SECTION
 ================================================================ */
 
-type Doc = { id?: string; title: string; edited: string; people: string[]; tint: string; updatedAt?: any };
+type Doc = { id?: string; title: string; edited: string; people: string[]; tint: string; updatedAt?: any; content?: any };
 
 type SortMode = "newest" | "oldest" | "az" | "za";
 
@@ -863,21 +853,23 @@ function DocCard({
       className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-border-soft bg-white text-left shadow-[0_1px_2px_rgba(40,40,90,0.04)] transition-all duration-300 hover:shadow-[0_14px_30px_-16px_rgba(40,40,90,0.2)]"
     >
       <div
-        className="relative h-28 w-full overflow-hidden"
-        style={{
-          background: `linear-gradient(135deg, color-mix(in oklab, ${doc.tint} 14%, white) 0%, white 100%)`,
-        }}
+        className="relative h-36 w-full overflow-hidden border-b border-[#dadce0] bg-white"
       >
-        <div className="absolute inset-0 p-4">
-          <div className="space-y-1.5">
-            <div className="h-1.5 w-9/12 rounded-full bg-foreground/12" />
-            <div className="h-1 w-8/12 rounded-full bg-foreground/8" />
-            <div className="h-1 w-7/12 rounded-full bg-foreground/8" />
-            <div className="mt-2 h-1 w-10/12 rounded-full bg-foreground/6" />
-            <div className="h-1 w-9/12 rounded-full bg-foreground/6" />
+        {doc.content ? (
+          <div className="absolute inset-0">
+            <DocumentPreview content={doc.content} />
           </div>
-        </div>
-        <FileText size={14} strokeWidth={1.7} className="absolute right-3 top-3 text-muted-foreground/60" />
+        ) : (
+          <div className="absolute inset-0 p-4">
+            <div className="space-y-1.5 opacity-60">
+              <div className="h-1.5 w-9/12 rounded-full bg-foreground/12" />
+              <div className="h-1 w-8/12 rounded-full bg-foreground/8" />
+              <div className="h-1 w-7/12 rounded-full bg-foreground/8" />
+              <div className="mt-2 h-1 w-10/12 rounded-full bg-foreground/6" />
+              <div className="h-1 w-9/12 rounded-full bg-foreground/6" />
+            </div>
+          </div>
+        )}
       </div>
       <div className="flex w-full flex-col gap-1 px-3.5 py-3">
         {renaming ? (
@@ -991,7 +983,7 @@ function TemplatesSection() {
         </p>
         <h2 className="font-display text-[22px] font-semibold tracking-tight">Templates</h2>
       </div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {TEMPLATE_CARDS.map((t, i) => (
           <TemplateCard key={t.title} index={i} {...t} />
         ))}
@@ -1013,13 +1005,13 @@ function TemplateCard({
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
 
+  const templateKey = TEMPLATE_TITLE_MAP[title];
+  const template = templateKey ? TEMPLATES[templateKey] : null;
+
   const handleOpen = async () => {
     if (!user || loading) return;
     setLoading(true);
     try {
-      const templateKey = TEMPLATE_TITLE_MAP[title];
-      const template = templateKey ? TEMPLATES[templateKey] : null;
-
       const id = await createDocument(user.uid, template ? {
         title: template.title,
         content: template.content,
@@ -1044,16 +1036,24 @@ function TemplateCard({
       whileHover={{ y: -3 }}
       onClick={handleOpen}
       disabled={loading}
-      className="group flex items-center gap-4 rounded-xl border border-border-soft bg-white p-4 text-left shadow-[0_1px_2px_rgba(40,40,90,0.04)] transition-all duration-300 hover:shadow-[0_14px_30px_-16px_rgba(40,40,90,0.2)] disabled:opacity-60"
+      className="group flex flex-col items-start disabled:opacity-60"
     >
-      <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary-soft to-white text-primary transition-transform group-hover:scale-105">
-        {loading
-          ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          : <Icon size={20} strokeWidth={1.7} />}
+      <div className="relative flex aspect-[1/1.414] w-full items-center justify-center overflow-hidden rounded-[4px] border border-[#dadce0] bg-white transition-all duration-300 group-hover:border-[#1a73e8] group-hover:shadow-[0_1px_3px_rgba(0,0,0,0.12)]">
+        <div className="absolute inset-0 bg-white">
+          <DocumentPreview content={template?.content} />
+        </div>
+        {loading && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          </div>
+        )}
       </div>
-      <div className="min-w-0">
-        <p className="truncate text-[14px] font-medium text-foreground">{title}</p>
-        <p className="truncate text-[12px] text-muted-foreground">{loading ? "Creating…" : "Use this template"}</p>
+      <div className="mt-3 w-full text-left flex items-start justify-between">
+        <div>
+          <p className="truncate text-[14px] font-medium text-[#202124]">{title}</p>
+          <p className="truncate text-[12px] text-gray-500 mt-0.5">{loading ? "Creating…" : "Template"}</p>
+        </div>
+        <Icon size={14} strokeWidth={1.8} className="text-gray-400 mt-1" />
       </div>
     </motion.button>
   );
