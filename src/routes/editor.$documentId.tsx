@@ -43,6 +43,8 @@ import { TextFormattingToolbar } from "@/components/editor/text-formatting-toolb
 import { useEditorTypography, UnifiedFontFamilyDropdown, UnifiedFontSizeDropdown, UnifiedFontSizeControl } from "@/components/editor/typography-controls";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
+import { ReadModeView } from "@/components/editor/read-mode-view";
+import React from "react";
 
 const lowlight = createLowlight(common);
 
@@ -108,9 +110,30 @@ import {
   ExternalLink,
   X,
   SplitSquareHorizontal,
+  BookOpen,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import colliqLogo from "@/assets/landing/colliq-logo.png";
+
+class ReadModeErrorBoundary extends React.Component<{children: React.ReactNode, onClose: () => void}, {hasError: boolean}> {
+  constructor(props: {children: React.ReactNode, onClose: () => void}) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: any) { console.error("ReadMode crashed:", error); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#EFEBE4]">
+          <p className="text-muted-foreground mb-4">Read Mode encountered an error rendering the document.</p>
+          <button onClick={this.props.onClose} className="px-4 py-2 bg-white rounded-md shadow">Return to Editor</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export const Route = createFileRoute("/editor/$documentId")({
   head: () => ({
@@ -144,6 +167,7 @@ function EditorPage() {
   const [customMargins, setCustomMargins] = useState({ top: 96, bottom: 96, left: 96, right: 96 });
   const [wordCountOpen, setWordCountOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [isReadMode, setIsReadMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -349,6 +373,7 @@ function EditorPage() {
               favorite={favorite}
               setFavorite={handleFavoriteToggle}
               saveStatus={saveStatus}
+              onReadMode={() => setIsReadMode(true)}
             />
             <MenuBar 
               editor={editor}
@@ -364,6 +389,7 @@ function EditorPage() {
               onImport={() => fileInputRef.current?.click()}
               marginState={marginState}
               onSetMarginState={setMarginState}
+              onReadMode={() => setIsReadMode(true)}
             />
           </motion.div>
         )}
@@ -409,6 +435,12 @@ function EditorPage() {
       />
 
       <EditorStyles />
+
+      {isReadMode && editor && (
+        <ReadModeErrorBoundary onClose={() => setIsReadMode(false)}>
+          <ReadModeView editor={editor} onClose={() => setIsReadMode(false)} />
+        </ReadModeErrorBoundary>
+      )}
     </div>
   );
 }
@@ -423,6 +455,7 @@ function TopHeader({
   favorite,
   setFavorite,
   saveStatus,
+  onReadMode,
 }: {
   user: { displayName?: string | null; email?: string | null; photoURL?: string | null };
   title: string;
@@ -430,6 +463,7 @@ function TopHeader({
   favorite: boolean;
   setFavorite: (v: boolean) => void;
   saveStatus: SaveStatus;
+  onReadMode?: () => void;
 }) {
   const initials = (user.displayName || user.email || "U").trim().slice(0, 1).toUpperCase();
 
@@ -467,8 +501,15 @@ function TopHeader({
           <SaveStatusPill status={saveStatus} />
         </div>
 
-        {/* Right: actions */}
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={onReadMode}
+            title="Read Mode"
+            className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium text-foreground/75 transition-all hover:bg-surface-muted hover:text-foreground"
+          >
+            <BookOpen size={14} strokeWidth={1.8} />
+            <span className="hidden lg:inline">Read Mode</span>
+          </button>
           <HeaderBtn icon={History} label="Version history" />
           <HeaderBtn icon={MessageSquare} label="Comments" />
           <HeaderBtn icon={Sparkles} label="Ask AI" highlighted />
@@ -630,6 +671,7 @@ const MENUS: Record<string, MenuItem[]> = {
     { label: "Margins: Wide", icon: LayoutTemplate },
   ],
   View: [
+    { label: "Read Mode", icon: BookOpen },
     { label: "Full screen", icon: Maximize },
     { label: "Page mode", icon: LayoutTemplate },
     { label: "Narrow width", icon: Eye },
@@ -696,6 +738,7 @@ function MenuBar({
   onImport?: () => void;
   marginState?: string;
   onSetMarginState?: (margin: any) => void;
+  onReadMode?: () => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -765,6 +808,7 @@ function MenuBar({
         if (item === "Download PDF") exportToPdf();
       }
       if (menu === "View") {
+        if (item === "Read Mode") onReadMode?.();
         if (item === "Full screen") {
           if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
           else document.exitFullscreen().catch(() => {});

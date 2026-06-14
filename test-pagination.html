@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { display: flex; justify-content: center; align-items: center; height: 100vh; background: #eee; font-family: sans-serif; }
+  .book { display: flex; box-shadow: 0 10px 30px rgba(0,0,0,0.2); background: white; width: 880px; height: 600px; }
+  .page { width: 400px; height: 560px; margin: 20px; overflow: hidden; position: relative; border: 1px solid #ddd; }
+  .content { 
+    column-width: 400px; 
+    column-gap: 40px; 
+    height: 560px; 
+    column-fill: auto; 
+    position: absolute; 
+    top: 0;
+  }
+  p { line-height: 1.6; margin-bottom: 1em; }
+</style>
+</head>
+<body>
+  <div class="book">
+    <div class="page" id="page1">
+      <div class="content" id="content1" style="left: 0;"></div>
+    </div>
+    <div class="page" id="page2">
+      <div class="content" id="content2" style="left: -440px;"></div>
+    </div>
+  </div>
+  <script>
+    const text = "<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(100) + "</p>";
+    document.getElementById('content1').innerHTML = text;
+    document.getElementById('content2').innerHTML = text;
+  </script>
+</body>
+</html>
