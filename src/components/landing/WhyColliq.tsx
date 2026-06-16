@@ -2,19 +2,19 @@ import { motion } from "framer-motion";
 import { X, Check } from "lucide-react";
 
 const before = [
-  "Endless file versions named “final-v7-FINAL”",
-  "Scattered feedback across email and chat",
-  "Disconnected communication, lost context",
-  "Slow approvals that stall every project",
-  "Messy collaboration with no source of truth",
+  "Version chaos",
+  "Constant context switching",
+  "Feedback lost in conversations",
+  "Slow handoffs between teams",
+  "Unclear ownership and progress",
 ];
 
 const after = [
-  "Live collaboration in a single shared canvas",
-  "A workspace where context lives with the work",
-  "Instant syncing across every device, always",
-  "Streamlined teamwork that keeps moving",
-  "Faster execution with one source of truth",
+  "Real-time collaborative writing",
+  "Shared context around every document",
+  "Faster alignment across teams",
+  "Clear ownership and accountability",
+  "Work that stays organized as it grows",
 ];
 
 export function WhyColliq() {
@@ -32,10 +32,10 @@ export function WhyColliq() {
             Why Colliq
           </p>
           <h2 className="font-display text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
-            Goodbye, old workflows.
+            Work moves faster when everyone writes together.
           </h2>
           <p className="mt-6 font-serif text-2xl italic text-foreground/80 sm:text-3xl">
-            The way teams write is broken. We fixed it.
+            Colliq brings documents, collaboration, and execution into one calm workspace.
           </p>
           <p className="mt-5 text-[15.5px] text-muted-foreground">
             Here's what changes when you switch to Colliq.

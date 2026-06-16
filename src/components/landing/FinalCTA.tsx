@@ -34,7 +34,7 @@ export function FinalCTA() {
             </a>
           </div>
           <p className="mt-5 text-[12.5px] text-muted-foreground">
-            No credit card required · Free forever for small teams
+            Free forever for small teams
           </p>
         </motion.div>
       </div>

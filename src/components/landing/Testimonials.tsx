@@ -11,33 +11,33 @@ type Quote = {
 
 const quotes: Quote[] = [
   {
-    text: "It finally feels like our team works in the same room — even when we're on three continents.",
-    name: "Priya Shah",
-    role: "Design Lead, Northwind",
+    text: "Colliq helped our team replace fragmented document workflows with a single collaborative workspace. The difference in productivity was immediate.",
+    name: "Ava Thompson",
+    role: "Head of Product, Northstar Technologies",
     color: "var(--cursor-violet)",
   },
   {
-    text: "We replaced four tools with Colliq in a week. The cursors aren't a gimmick — they're how we think now.",
-    name: "Marcus Lee",
-    role: "Founder, Tideboard",
+    text: "We went from chasing document versions to actually shipping work. Colliq keeps everyone aligned without adding complexity.",
+    name: "Rahul Sharma",
+    role: "Founder, Elevate Ventures",
     color: "var(--cursor-blue)",
   },
   {
-    text: "It's the first writing tool that feels emotionally calm. My team actually wants to open it in the morning.",
-    name: "Sara Okafor",
-    role: "Head of Content, Folio",
+    text: "Real-time collaboration feels effortless. It's one of those tools that quietly becomes essential to how your team operates.",
+    name: "Michael Chen",
+    role: "Engineering Manager, Horizon Systems",
     color: "var(--cursor-pink)",
   },
   {
-    text: "Reviews used to take a week of email chains. Now they happen in twenty minutes, in one document.",
-    name: "Daniel Roth",
-    role: "PM, Loomstack",
+    text: "The writing experience is beautifully focused. Our team spends less time organizing information and more time creating it.",
+    name: "Sophia Martinez",
+    role: "Content Director, Atlas Creative",
     color: "var(--cursor-teal)",
   },
   {
-    text: "I'm a student and Colliq feels like the first tool that wasn't designed for spreadsheets first.",
-    name: "Aiko Tanaka",
-    role: "MSc, ETH Zürich",
+    text: "Colliq gives us a reliable source of truth across projects. Everyone knows where the latest information lives.",
+    name: "James Walker",
+    role: "Operations Lead, BluePeak Consulting",
     color: "var(--accent-violet)",
   },
 ];

@@ -1,17 +1,17 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Check } from "lucide-react";
 import { PrimaryButton } from "./primitives/Buttons";
-import img1 from "@/assets/landing/collab-1.jpg";
-import img2 from "@/assets/landing/collab-2.jpg";
-import img3 from "@/assets/landing/collab-3.jpg";
-import img4 from "@/assets/landing/collab-4.jpg";
+import img1 from "@/components/landing/images/usage-1.png";
+import img2 from "@/components/landing/images/usage-2.png";
+import img3 from "@/components/landing/images/usage-3.png";
+import img4 from "@/components/landing/images/usage-4.png";
 
 const images = [img1, img2, img3, img4];
 const bullets = [
-  "Real-time collaboration without interruptions",
-  "Seamless teamwork from anywhere in the world",
-  "Faster workflows with live multiplayer editing",
-  "A beautiful, calm workspace experience",
+  "Create professional documents in minutes",
+  "Work together seamlessly across teams and projects",
+  "Turn ideas into polished documents faster",
+  "Designed for deep focus and distraction-free writing",
 ];
 
 function MarqueeColumn({ reverse = false, delay = 0 }: { reverse?: boolean; delay?: number }) {
@@ -31,10 +31,9 @@ function MarqueeColumn({ reverse = false, delay = 0 }: { reverse?: boolean; dela
             <img
               src={src}
               alt=""
-              width={768}
-              height={768}
               loading="lazy"
-              className="block h-auto w-full"
+              className="block h-auto w-full object-cover"
+              style={{ aspectRatio: "16/10" }}
             />
           </div>
         ))}
@@ -63,10 +62,10 @@ export function SocialProof() {
           transition={{ duration: 0.7 }}
         >
           <p className="mb-4 text-sm font-medium uppercase tracking-[0.16em] text-primary/80">
-            Built for teams that move
+            Built for Modern Work
           </p>
           <h2 className="font-display text-4xl font-semibold leading-[1.05] tracking-tight sm:text-5xl">
-            Loved by fast-moving teams, creators, and students.
+            Write, organize, and collaborate without friction.
           </h2>
 
           <ul className="mt-8 space-y-3.5">
@@ -82,7 +81,7 @@ export function SocialProof() {
 
           <div className="mt-10">
             <PrimaryButton className="!px-6">
-              Start Exploring
+              Start Writing
               <ArrowRight size={16} />
             </PrimaryButton>
           </div>
