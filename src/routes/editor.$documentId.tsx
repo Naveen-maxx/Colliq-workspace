@@ -374,6 +374,7 @@ function EditorPage() {
               setFavorite={handleFavoriteToggle}
               saveStatus={saveStatus}
               onReadMode={() => setIsReadMode(true)}
+              onVersionHistory={() => setVersionHistoryOpen(true)}
             />
             <MenuBar 
               editor={editor}
@@ -456,14 +457,16 @@ function TopHeader({
   setFavorite,
   saveStatus,
   onReadMode,
+  onVersionHistory,
 }: {
-  user: { displayName?: string | null; email?: string | null; photoURL?: string | null };
+  user: any;
   title: string;
-  setTitle: (v: string) => void;
+  setTitle: (t: string) => void;
   favorite: boolean;
   setFavorite: (v: boolean) => void;
   saveStatus: SaveStatus;
-  onReadMode?: () => void;
+  onReadMode: () => void;
+  onVersionHistory?: () => void;
 }) {
   const initials = (user.displayName || user.email || "U").trim().slice(0, 1).toUpperCase();
 
@@ -510,7 +513,7 @@ function TopHeader({
             <BookOpen size={14} strokeWidth={1.8} />
             <span className="hidden lg:inline">Read Mode</span>
           </button>
-          <HeaderBtn icon={History} label="Version history" />
+          <HeaderBtn icon={History} label="Version history" onClick={onVersionHistory} />
           <HeaderBtn icon={MessageSquare} label="Comments" />
           <HeaderBtn icon={Sparkles} label="Ask AI" highlighted />
           <button className="ml-1 flex h-9 items-center gap-2 rounded-full bg-primary px-4 text-[13px] font-medium text-white shadow-[0_4px_12px_-4px_color-mix(in_oklab,var(--primary)_55%,transparent)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_92%,black)] active:scale-[0.98]">
@@ -620,14 +623,17 @@ function HeaderBtn({
   icon: Icon,
   label,
   highlighted,
+  onClick,
 }: {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
   label: string;
   highlighted?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <button
       title={label}
+      onClick={onClick}
       className={`flex h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-all ${
         highlighted
           ? "bg-gradient-to-r from-[color-mix(in_oklab,var(--primary)_14%,white)] to-[color-mix(in_oklab,var(--accent-violet)_14%,white)] text-primary ring-1 ring-primary/15 hover:ring-primary/30"
@@ -805,7 +811,7 @@ function MenuBar({
         if (item === "Download DOCX") exportToDocx(editor, document.title);
         if (item === "Download HTML") exportToHtml(editor, document.title);
         if (item === "Download TXT") exportToTxt(editor, document.title);
-        if (item === "Download PDF") exportToPdf();
+        if (item === "Download PDF") exportToPdf(editor, document.title);
       }
       if (menu === "View") {
         if (item === "Read Mode") onReadMode?.();
