@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
+import { Route as TestAiRouteImport } from './routes/test-ai'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as LoginRouteImport } from './routes/login'
@@ -20,6 +21,11 @@ import { Route as EditorDocumentIdRouteImport } from './routes/editor.$documentI
 const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/workspace',
   path: '/workspace',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TestAiRoute = TestAiRouteImport.update({
+  id: '/test-ai',
+  path: '/test-ai',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignupRoute = SignupRouteImport.update({
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
+  '/test-ai': typeof TestAiRoute
   '/workspace': typeof WorkspaceRoute
   '/editor/$documentId': typeof EditorDocumentIdRoute
   '/editor/': typeof EditorIndexRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
+  '/test-ai': typeof TestAiRoute
   '/workspace': typeof WorkspaceRoute
   '/editor/$documentId': typeof EditorDocumentIdRoute
   '/editor': typeof EditorIndexRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
+  '/test-ai': typeof TestAiRoute
   '/workspace': typeof WorkspaceRoute
   '/editor/$documentId': typeof EditorDocumentIdRoute
   '/editor/': typeof EditorIndexRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/settings'
     | '/signup'
+    | '/test-ai'
     | '/workspace'
     | '/editor/$documentId'
     | '/editor/'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/settings'
     | '/signup'
+    | '/test-ai'
     | '/workspace'
     | '/editor/$documentId'
     | '/editor'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/settings'
     | '/signup'
+    | '/test-ai'
     | '/workspace'
     | '/editor/$documentId'
     | '/editor/'
@@ -116,6 +128,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
   SignupRoute: typeof SignupRoute
+  TestAiRoute: typeof TestAiRoute
   WorkspaceRoute: typeof WorkspaceRoute
   EditorDocumentIdRoute: typeof EditorDocumentIdRoute
   EditorIndexRoute: typeof EditorIndexRoute
@@ -128,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/workspace'
       fullPath: '/workspace'
       preLoaderRoute: typeof WorkspaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/test-ai': {
+      id: '/test-ai'
+      path: '/test-ai'
+      fullPath: '/test-ai'
+      preLoaderRoute: typeof TestAiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signup': {
@@ -180,6 +200,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
   SignupRoute: SignupRoute,
+  TestAiRoute: TestAiRoute,
   WorkspaceRoute: WorkspaceRoute,
   EditorDocumentIdRoute: EditorDocumentIdRoute,
   EditorIndexRoute: EditorIndexRoute,

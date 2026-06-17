@@ -38,6 +38,7 @@ import { createVersionSnapshot } from "@/firebase/firestore/versions";
 import { VersionHistorySidebar } from "@/components/editor/version-history-sidebar";
 import CharacterCount from "@tiptap/extension-character-count";
 import { exportToDocx, exportToHtml, exportToTxt, exportToPdf, importDocx, importTxt } from "@/components/editor/import-export";
+import { AskAISidebar } from "@/components/editor/ask-ai-sidebar";
 import { FontSize } from "@/components/editor/extensions/font-size";
 import { TextFormattingToolbar } from "@/components/editor/text-formatting-toolbar";
 import { useEditorTypography, UnifiedFontFamilyDropdown, UnifiedFontSizeDropdown, UnifiedFontSizeControl } from "@/components/editor/typography-controls";
@@ -168,6 +169,7 @@ function EditorPage() {
   const [wordCountOpen, setWordCountOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isReadMode, setIsReadMode] = useState(false);
+  const [isAskAIOpen, setIsAskAIOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -375,6 +377,7 @@ function EditorPage() {
               saveStatus={saveStatus}
               onReadMode={() => setIsReadMode(true)}
               onVersionHistory={() => setVersionHistoryOpen(true)}
+              onAskAI={() => setIsAskAIOpen(true)}
             />
             <MenuBar 
               editor={editor}
@@ -400,6 +403,7 @@ function EditorPage() {
 
       <FileBrowserModal isOpen={fileBrowserOpen} onClose={() => setFileBrowserOpen(false)} />
       <VersionHistorySidebar isOpen={versionHistoryOpen} onClose={() => setVersionHistoryOpen(false)} documentId={documentId} editor={editor} />
+      <AskAISidebar isOpen={isAskAIOpen} onClose={() => setIsAskAIOpen(false)} editor={editor} />
       {wordCountOpen && <WordCountModal editor={editor} onClose={() => setWordCountOpen(false)} />}
 
       <Toolbar
@@ -458,6 +462,7 @@ function TopHeader({
   saveStatus,
   onReadMode,
   onVersionHistory,
+  onAskAI,
 }: {
   user: any;
   title: string;
@@ -467,6 +472,7 @@ function TopHeader({
   saveStatus: SaveStatus;
   onReadMode: () => void;
   onVersionHistory?: () => void;
+  onAskAI: () => void;
 }) {
   const initials = (user.displayName || user.email || "U").trim().slice(0, 1).toUpperCase();
 
@@ -515,7 +521,7 @@ function TopHeader({
           </button>
           <HeaderBtn icon={History} label="Version history" onClick={onVersionHistory} />
           <HeaderBtn icon={MessageSquare} label="Comments" />
-          <HeaderBtn icon={Sparkles} label="Ask AI" highlighted />
+          <HeaderBtn icon={Sparkles} label="Ask AI" highlighted onClick={onAskAI} />
           <button className="ml-1 flex h-9 items-center gap-2 rounded-full bg-primary px-4 text-[13px] font-medium text-white shadow-[0_4px_12px_-4px_color-mix(in_oklab,var(--primary)_55%,transparent)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_92%,black)] active:scale-[0.98]">
             <Share2 size={14} strokeWidth={2} />
             Share
@@ -729,7 +735,8 @@ function MenuBar({
   onWordCount,
   onImport,
   marginState,
-  onSetMarginState
+  onSetMarginState,
+  onReadMode
 }: { 
   editor: Editor | null;
   onNewDocument?: () => void;
