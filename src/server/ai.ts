@@ -50,6 +50,11 @@ export interface CallGeminiOptions {
    */
   documentContext?: string;
   /**
+   * Optional currently selected text.
+   * Provide this when the AI needs to act on a specific portion of the document.
+   */
+  selectedText?: string;
+  /**
    * Optional system prompt override.
    * Defaults to the Colliq AI persona above.
    */
@@ -73,14 +78,23 @@ export interface CallGeminiOptions {
 export async function callGemini({
   prompt,
   documentContext,
+  selectedText,
   systemPrompt,
 }: CallGeminiOptions): Promise<string> {
   const system = systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
 
-  // If document context is supplied, prepend it so Gemini can reason over the document.
-  const userContent = documentContext
-    ? `[Document Content]\n${documentContext}\n\n[User Request]\n${prompt}`
-    : prompt;
+  // Build the user content context
+  let userContent = "";
+
+  if (documentContext) {
+    userContent += `[Document Content]\n${documentContext}\n\n`;
+  }
+
+  if (selectedText) {
+    userContent += `[Selected Text to Modify]\n${selectedText}\n\n`;
+  }
+
+  userContent += `[Instruction]\n${prompt}`;
 
   const response = await ai.models.generateContent({
     model: MODEL,

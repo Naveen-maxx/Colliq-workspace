@@ -15,114 +15,128 @@ import {
   Quote,
   Table,
   ImageIcon,
+  Sparkles,
 } from "lucide-react";
+import type { AIController } from "@/lib/ai-controller";
+import { getAISuggestionItems } from "./ai-slash-commands";
 
 export interface CommandItem {
   title: string;
   description: string;
   icon: any;
+  isAI?: boolean;
   command: (props: { editor: any; range: any }) => void;
 }
 
-export const getSuggestionItems = ({ query }: { query: string }) => {
-  return [
-    {
-      title: "Heading 1",
-      description: "Large section heading.",
-      icon: Heading1,
-      command: ({ editor, range }: any) => {
-        editor.chain().focus().deleteRange(range).setNode("heading", { level: 1 }).run();
-      },
+const getFormattingItems = ({ query }: { query: string }): CommandItem[] => [
+  {
+    title: "Heading 1",
+    description: "Large section heading.",
+    icon: Heading1,
+    command: ({ editor, range }: any) => {
+      editor.chain().focus().deleteRange(range).setNode("heading", { level: 1 }).run();
     },
-    {
-      title: "Heading 2",
-      description: "Medium section heading.",
-      icon: Heading2,
-      command: ({ editor, range }: any) => {
-        editor.chain().focus().deleteRange(range).setNode("heading", { level: 2 }).run();
-      },
+  },
+  {
+    title: "Heading 2",
+    description: "Medium section heading.",
+    icon: Heading2,
+    command: ({ editor, range }: any) => {
+      editor.chain().focus().deleteRange(range).setNode("heading", { level: 2 }).run();
     },
-    {
-      title: "Heading 3",
-      description: "Small section heading.",
-      icon: Heading3,
-      command: ({ editor, range }: any) => {
-        editor.chain().focus().deleteRange(range).setNode("heading", { level: 3 }).run();
-      },
+  },
+  {
+    title: "Heading 3",
+    description: "Small section heading.",
+    icon: Heading3,
+    command: ({ editor, range }: any) => {
+      editor.chain().focus().deleteRange(range).setNode("heading", { level: 3 }).run();
     },
-    {
-      title: "Bullet List",
-      description: "Create a simple bulleted list.",
-      icon: List,
-      command: ({ editor, range }: any) => {
-        editor.chain().focus().deleteRange(range).toggleBulletList().run();
-      },
+  },
+  {
+    title: "Bullet List",
+    description: "Create a simple bulleted list.",
+    icon: List,
+    command: ({ editor, range }: any) => {
+      editor.chain().focus().deleteRange(range).toggleBulletList().run();
     },
-    {
-      title: "Numbered List",
-      description: "Create a list with numbering.",
-      icon: ListOrdered,
-      command: ({ editor, range }: any) => {
-        editor.chain().focus().deleteRange(range).toggleOrderedList().run();
-      },
+  },
+  {
+    title: "Numbered List",
+    description: "Create a list with numbering.",
+    icon: ListOrdered,
+    command: ({ editor, range }: any) => {
+      editor.chain().focus().deleteRange(range).toggleOrderedList().run();
     },
-    {
-      title: "Checklist",
-      description: "Track tasks with a to-do list.",
-      icon: CheckSquare,
-      command: ({ editor, range }: any) => {
-        editor.chain().focus().deleteRange(range).toggleTaskList().run();
-      },
+  },
+  {
+    title: "Checklist",
+    description: "Track tasks with a to-do list.",
+    icon: CheckSquare,
+    command: ({ editor, range }: any) => {
+      editor.chain().focus().deleteRange(range).toggleTaskList().run();
     },
-    {
-      title: "Table",
-      description: "Add a simple tabular data structure.",
-      icon: Table,
-      command: ({ editor, range }: any) => {
-        editor
-          .chain()
-          .focus()
-          .deleteRange(range)
-          .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-          .run();
-      },
+  },
+  {
+    title: "Table",
+    description: "Add a simple tabular data structure.",
+    icon: Table,
+    command: ({ editor, range }: any) => {
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+        .run();
     },
-    {
-      title: "Image",
-      description: "Upload an image.",
-      icon: ImageIcon,
-      command: ({ editor, range }: any) => {
-        editor.chain().focus().deleteRange(range).run();
-        import("@/components/editor/extensions/image-upload").then(({ triggerImageUpload }) => {
-          triggerImageUpload(editor);
-        });
-      },
+  },
+  {
+    title: "Image",
+    description: "Upload an image.",
+    icon: ImageIcon,
+    command: ({ editor, range }: any) => {
+      editor.chain().focus().deleteRange(range).run();
+      import("@/components/editor/extensions/image-upload").then(({ triggerImageUpload }) => {
+        triggerImageUpload(editor);
+      });
     },
-    {
-      title: "Quote",
-      description: "Capture a quote.",
-      icon: Quote,
-      command: ({ editor, range }: any) => {
-        editor.chain().focus().deleteRange(range).toggleBlockquote().run();
-      },
+  },
+  {
+    title: "Quote",
+    description: "Capture a quote.",
+    icon: Quote,
+    command: ({ editor, range }: any) => {
+      editor.chain().focus().deleteRange(range).toggleBlockquote().run();
     },
-    {
-      title: "Code Block",
-      description: "Capture a code snippet.",
-      icon: Code,
-      command: ({ editor, range }: any) => {
-        editor.chain().focus().deleteRange(range).toggleCodeBlock().run();
-      },
+  },
+  {
+    title: "Code Block",
+    description: "Capture a code snippet.",
+    icon: Code,
+    command: ({ editor, range }: any) => {
+      editor.chain().focus().deleteRange(range).toggleCodeBlock().run();
     },
-    {
-      title: "Divider",
-      description: "Visually divide blocks.",
-      icon: Minus,
-      command: ({ editor, range }: any) => {
-        editor.chain().focus().deleteRange(range).setHorizontalRule().run();
-      },
+  },
+  {
+    title: "Divider",
+    description: "Visually divide blocks.",
+    icon: Minus,
+    command: ({ editor, range }: any) => {
+      editor.chain().focus().deleteRange(range).setHorizontalRule().run();
     },
-  ].filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
+  },
+].filter((item) => item.title.toLowerCase().includes(query.toLowerCase()));
+
+export const getSuggestionItems = (
+  editor: any,
+  aiController: AIController | null,
+  { query }: { query: string }
+): CommandItem[] => {
+  const aiItems = (editor && aiController)
+    ? getAISuggestionItems(editor, aiController, query)
+    : [];
+  const formattingItems = getFormattingItems({ query });
+  return [...aiItems, ...formattingItems];
 };
 
 export const CommandList = forwardRef((props: any, ref) => {
@@ -167,36 +181,78 @@ export const CommandList = forwardRef((props: any, ref) => {
     },
   }));
 
+  // Check if there are any AI items to render a section header
+  const hasAIItems = props.items.some((i: CommandItem) => i.isAI);
+  const hasFormattingItems = props.items.some((i: CommandItem) => !i.isAI);
+  const firstFormattingIdx = props.items.findIndex((i: CommandItem) => !i.isAI);
+
   return (
-    <div className="z-50 max-h-[330px] w-72 overflow-y-auto rounded-xl border border-border-soft bg-white p-1.5 shadow-[0_12px_40px_-12px_rgba(40,40,90,0.15)]">
+    <div className="z-50 max-h-[380px] w-72 overflow-y-auto rounded-xl border border-border-soft bg-white p-1.5 shadow-[0_12px_40px_-12px_rgba(40,40,90,0.15)]">
       {props.items.length ? (
-        props.items.map((item: CommandItem, index: number) => {
-          const isSelected = index === selectedIndex;
-          const Icon = item.icon;
-          return (
-            <button
-              key={index}
-              onClick={() => selectItem(index)}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
-                isSelected
-                  ? "bg-primary-soft text-foreground"
-                  : "text-foreground/80 hover:bg-surface-muted"
-              }`}
-            >
-              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border-soft bg-white">
-                <Icon size={16} className={isSelected ? "text-primary" : "text-foreground/70"} />
-              </div>
-              <div>
-                <p
-                  className={`text-[13.5px] font-medium leading-tight ${isSelected ? "text-primary" : "text-foreground"}`}
+        <>
+          {hasAIItems && (
+            <p className="px-3 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-widest text-primary/50">
+              AI Actions
+            </p>
+          )}
+          {props.items.map((item: CommandItem, index: number) => {
+            const isSelected = index === selectedIndex;
+            const Icon = item.icon;
+            const isFirstFormatting = index === firstFormattingIdx && hasAIItems;
+
+            return (
+              <div key={index}>
+                {isFirstFormatting && (
+                  <div className="mx-2 my-1.5 border-t border-border/50" />
+                )}
+                {isFirstFormatting && (
+                  <p className="px-3 pb-1 pt-0.5 text-[10.5px] font-bold uppercase tracking-widest text-muted-foreground/40">
+                    Formatting
+                  </p>
+                )}
+                <button
+                  onClick={() => selectItem(index)}
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
+                    isSelected
+                      ? item.isAI
+                        ? "bg-primary/10 text-foreground"
+                        : "bg-primary-soft text-foreground"
+                      : "text-foreground/80 hover:bg-surface-muted"
+                  }`}
                 >
-                  {item.title}
-                </p>
-                <p className="text-[11.5px] text-muted-foreground">{item.description}</p>
+                  <div
+                    className={`grid h-8 w-8 shrink-0 place-items-center rounded-md ${
+                      item.isAI
+                        ? "bg-gradient-to-br from-primary/10 to-[var(--accent-violet)]/10"
+                        : "border border-border-soft bg-white"
+                    }`}
+                  >
+                    <Icon
+                      size={16}
+                      className={
+                        item.isAI
+                          ? "text-primary"
+                          : isSelected
+                          ? "text-primary"
+                          : "text-foreground/70"
+                      }
+                    />
+                  </div>
+                  <div>
+                    <p
+                      className={`text-[13.5px] font-medium leading-tight ${
+                        isSelected ? (item.isAI ? "text-primary" : "text-primary") : "text-foreground"
+                      }`}
+                    >
+                      {item.title}
+                    </p>
+                    <p className="text-[11.5px] text-muted-foreground">{item.description}</p>
+                  </div>
+                </button>
               </div>
-            </button>
-          );
-        })
+            );
+          })}
+        </>
       ) : (
         <div className="p-3 text-center text-[13px] text-muted-foreground">No results</div>
       )}
@@ -229,9 +285,13 @@ export const SlashCommand = Extension.create({
   },
 });
 
-export const getSlashCommandConfig = () => {
+export const getSlashCommandConfig = (
+  editorRef: { current: any },
+  aiController: AIController | null
+) => {
   return {
-    items: getSuggestionItems,
+    items: ({ query }: { query: string }) =>
+      getSuggestionItems(editorRef.current, aiController, { query }),
     render: () => {
       let component: ReactRenderer<any>;
       let popup: TippyInstance[];

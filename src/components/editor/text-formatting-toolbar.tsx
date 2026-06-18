@@ -22,7 +22,15 @@ import {
 import { toast } from "sonner";
 import { useEditorTypography, UnifiedFontFamilyDropdown, UnifiedFontSizeDropdown } from "@/components/editor/typography-controls";
 
-export function TextFormattingToolbar({ editor }: { editor: Editor | null }) {
+import { Wand2 } from "lucide-react";
+
+export function TextFormattingToolbar({ 
+  editor,
+  onOpenAI
+}: { 
+  editor: Editor | null;
+  onOpenAI: () => void;
+}) {
   if (!editor) return null;
 
   // Render logic: Only show if text is selected, and it's not empty, and not an image/node selection
@@ -328,7 +336,6 @@ export function TextFormattingToolbar({ editor }: { editor: Editor | null }) {
         )}
       </div>
       
-      {/* Comment */}
       <FormatButton
         icon={MessageSquarePlus}
         isActive={false}
@@ -336,6 +343,18 @@ export function TextFormattingToolbar({ editor }: { editor: Editor | null }) {
           toast.info("Comments will be available in the collaboration phase.");
         }}
       />
+
+      <div className="h-4 w-px bg-border-soft" />
+
+      {/* AI */}
+      <button
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => onOpenAI()}
+        className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-primary transition-colors hover:bg-primary/10 active:scale-[0.98]"
+      >
+        <Wand2 size={14} strokeWidth={2.5} />
+        AI
+      </button>
     </BubbleMenu>
   );
 }

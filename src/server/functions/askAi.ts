@@ -29,6 +29,10 @@ export interface AskAiInput {
    * need to serialize the entire document unnecessarily.
    */
   documentContext?: string;
+  /**
+   * Optional: the currently selected text.
+   */
+  selectedText?: string;
 }
 
 export interface AskAiOutput {
@@ -59,6 +63,7 @@ export const askAi = createServerFn({ method: "POST" })
     const response = await callGemini({
       prompt: input.prompt.trim(),
       documentContext: input.documentContext,
+      selectedText: input.selectedText,
     });
 
     return { response };

@@ -97,7 +97,7 @@ function PreviewNode({ node }: { node: any }) {
             const isOrdered = node.type === "orderedList";
             return (
               <div key={i} style={{ display: "flex", gap: "1cqi", fontSize: "1.4cqi", color: "#9ca3af", lineHeight: 1.6, fontWeight: 500 }}>
-                <span style={{ shrink: 0, fontWeight: 600, color: "#6b7280" }}>
+                <span style={{ flexShrink: 0, fontWeight: 600, color: "#6b7280" }}>
                   {isOrdered ? `${i + 1}.` : "•"}
                 </span>
                 <div className="line-clamp-2">{renderText(item)}</div>

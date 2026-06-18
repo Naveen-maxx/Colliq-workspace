@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState, forwardRef } from "react";
+import { useEffect, useRef, useState, useMemo, forwardRef } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -39,6 +39,9 @@ import { VersionHistorySidebar } from "@/components/editor/version-history-sideb
 import CharacterCount from "@tiptap/extension-character-count";
 import { exportToDocx, exportToHtml, exportToTxt, exportToPdf, importDocx, importTxt } from "@/components/editor/import-export";
 import { AskAISidebar } from "@/components/editor/ask-ai-sidebar";
+import { SelectionAIOverlay, type AIStateSnapshot } from "@/components/editor/selection-ai-overlay";
+import { AIPreviewCard } from "@/components/editor/ai-preview-card";
+import { OutlinePopover } from "@/components/editor/outline-popover";
 import { FontSize } from "@/components/editor/extensions/font-size";
 import { TextFormattingToolbar } from "@/components/editor/text-formatting-toolbar";
 import { useEditorTypography, UnifiedFontFamilyDropdown, UnifiedFontSizeDropdown, UnifiedFontSizeControl } from "@/components/editor/typography-controls";
@@ -170,12 +173,29 @@ function EditorPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isReadMode, setIsReadMode] = useState(false);
   const [isAskAIOpen, setIsAskAIOpen] = useState(false);
+  const [selectionAIState, setSelectionAIState] = useState<{ isOpen: boolean; snapshot: AIStateSnapshot | null }>({ isOpen: false, snapshot: null });
+  const [summaryPreviewState, setSummaryPreviewState] = useState({ isOpen: false, title: "", content: "", insertAt: 0, isLoading: false });
+  const [outlinePopoverState, setOutlinePopoverState] = useState({ isOpen: false, insertAt: 0, documentContext: "" });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Keep a stable ref to the editor for the slash command config (avoids stale closure)
+  const editorRef = useRef<any>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/login" });
   }, [user, loading, navigate]);
+
+  // --- AI Controller (stable across renders) ---
+  const aiController = useMemo(() => ({
+    openSelectionAI: (snapshot: AIStateSnapshot) =>
+      setSelectionAIState({ isOpen: true, snapshot }),
+    openSummaryPreview: (state: { title: string; content: string; insertAt: number; isLoading: boolean }) =>
+      setSummaryPreviewState({ isOpen: true, ...state }),
+    closeSummaryPreview: () =>
+      setSummaryPreviewState(s => ({ ...s, isOpen: false })),
+    openOutlinePopover: ({ insertAt, documentContext }: { insertAt: number; documentContext: string }) =>
+      setOutlinePopoverState({ isOpen: true, insertAt, documentContext }),
+  }), []);
 
   const editor = useEditor({
     extensions: [
@@ -215,7 +235,7 @@ function EditorPage() {
       PageBreak,
       CharacterCount,
       SlashCommand.configure({
-        suggestion: getSlashCommandConfig(),
+        suggestion: getSlashCommandConfig(editorRef, aiController),
       }),
     ],
     content: "",
@@ -225,7 +245,12 @@ function EditorPage() {
           "colliq-prose focus:outline-none min-h-[1000px] px-[96px] py-[96px] text-[15.5px] leading-[1.75] text-foreground",
       },
     },
+    onCreate: ({ editor }) => {
+      editorRef.current = editor;
+    },
     onUpdate: ({ editor }) => {
+      // Keep editorRef in sync
+      editorRef.current = editor;
       setSaveStatus("saving");
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
@@ -404,6 +429,28 @@ function EditorPage() {
       <FileBrowserModal isOpen={fileBrowserOpen} onClose={() => setFileBrowserOpen(false)} />
       <VersionHistorySidebar isOpen={versionHistoryOpen} onClose={() => setVersionHistoryOpen(false)} documentId={documentId} editor={editor} />
       <AskAISidebar isOpen={isAskAIOpen} onClose={() => setIsAskAIOpen(false)} editor={editor} />
+      <SelectionAIOverlay 
+        editor={editor} 
+        isOpen={selectionAIState.isOpen} 
+        snapshot={selectionAIState.snapshot} 
+        onClose={() => setSelectionAIState({ isOpen: false, snapshot: null })} 
+      />
+      <AIPreviewCard
+        editor={editor}
+        isOpen={summaryPreviewState.isOpen}
+        isLoading={summaryPreviewState.isLoading}
+        title={summaryPreviewState.title}
+        content={summaryPreviewState.content}
+        insertAt={summaryPreviewState.insertAt}
+        onClose={() => setSummaryPreviewState(s => ({ ...s, isOpen: false }))}
+      />
+      <OutlinePopover
+        editor={editor}
+        isOpen={outlinePopoverState.isOpen}
+        insertAt={outlinePopoverState.insertAt}
+        documentContext={outlinePopoverState.documentContext}
+        onClose={() => setOutlinePopoverState(s => ({ ...s, isOpen: false }))}
+      />
       {wordCountOpen && <WordCountModal editor={editor} onClose={() => setWordCountOpen(false)} />}
 
       <Toolbar
@@ -424,7 +471,24 @@ function EditorPage() {
         customMargins={customMargins}
       >
         <EditorContent editor={editor} />
-        {editor && <TextFormattingToolbar editor={editor} />}
+        {editor && (
+          <TextFormattingToolbar 
+            editor={editor} 
+            onOpenAI={() => {
+              if (!editor) return;
+              const { from, to } = editor.state.selection;
+              setSelectionAIState({
+                isOpen: true,
+                snapshot: {
+                  from,
+                  to,
+                  selectedText: editor.state.doc.textBetween(from, to),
+                  documentContext: editor.getText()
+                }
+              });
+            }} 
+          />
+        )}
         {editor && <LinkBubbleMenu editor={editor} />}
         {editor && <TableBubbleMenu editor={editor} />}
       </DocumentCanvas>
