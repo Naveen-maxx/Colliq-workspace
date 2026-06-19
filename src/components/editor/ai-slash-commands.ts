@@ -173,10 +173,14 @@ export function getAISuggestionItems(
             data: {
               prompt: cmd.instruction,
               selectedText: context,
+              mode: "text",
             },
           });
-          const html = marked.parse(res.response, { async: false }) as string;
-          ed.chain().focus().insertContentAt(insertAt, html).run();
+          
+          if (res.response.type === "text") {
+            const html = marked.parse(res.response.content, { async: false }) as string;
+            ed.chain().focus().insertContentAt(insertAt, html).run();
+          }
           toast.dismiss(toastId);
         } catch {
           toast.dismiss(toastId);
@@ -208,15 +212,18 @@ export function getAISuggestionItems(
             data: {
               prompt: cmd.instruction,
               documentContext,
+              mode: "text",
             },
           });
           // Update the preview card with the generated content
-          aiController.openSummaryPreview({
-            content: res.response,
-            insertAt,
-            isLoading: false,
-            title: "Document Summary",
-          });
+          if (res.response.type === "text") {
+            aiController.openSummaryPreview({
+              content: res.response.content,
+              insertAt,
+              isLoading: false,
+              title: "Document Summary",
+            });
+          }
         } catch {
           toast.error("Failed to generate summary.");
           aiController.closeSummaryPreview();

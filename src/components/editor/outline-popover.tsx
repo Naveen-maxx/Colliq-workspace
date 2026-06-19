@@ -52,12 +52,15 @@ export function OutlinePopover({
         data: {
           prompt,
           documentContext: useDocument ? documentContext : undefined,
+          mode: "text",
         },
       });
 
-      const html = marked.parse(res.response, { async: false }) as string;
-      editor.chain().focus().insertContentAt(insertAt, html).run();
-      toast.success("Outline inserted.");
+      if (res.response.type === "text") {
+        const html = marked.parse(res.response.content, { async: false }) as string;
+        editor.chain().focus().insertContentAt(insertAt, html).run();
+        toast.success("Outline inserted.");
+      }
       onClose();
     } catch {
       toast.error("Failed to generate outline.");

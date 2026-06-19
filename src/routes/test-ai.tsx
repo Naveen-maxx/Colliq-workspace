@@ -17,8 +17,14 @@ function TestAiPage() {
     setError("");
     setResponse("");
     try {
-      const result = await askAi({ data: { prompt } });
-      setResponse(result.response);
+      const result = await askAi({
+        data: { prompt, documentContext: undefined },
+      });
+      if (result.response.type === "text") {
+        setResponse(result.response.content);
+      } else {
+        setResponse("[Image Generated]");
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {

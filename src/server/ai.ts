@@ -59,7 +59,17 @@ export interface CallGeminiOptions {
    * Defaults to the Colliq AI persona above.
    */
   systemPrompt?: string;
+  /**
+   * Optional forced mode. If not provided, defaults to "auto".
+   */
+  mode?: "auto" | "text" | "image";
 }
+
+export type AIResponse =
+  | { type: "text"; content: string }
+  | { type: "image"; prompt: string; imageData: string };
+
+const IMAGE_INTENT_REGEX = /\b(generate an image|create an image|create a picture|generate a picture|draw|illustration of|poster for|logo for|banner for|infographic of)\b/i;
 
 // ─── Core Service ─────────────────────────────────────────────────────────────
 
@@ -80,7 +90,40 @@ export async function callGemini({
   documentContext,
   selectedText,
   systemPrompt,
-}: CallGeminiOptions): Promise<string> {
+  mode = "auto",
+}: CallGeminiOptions): Promise<AIResponse> {
+  const isImageIntent = mode === "image" || (mode === "auto" && IMAGE_INTENT_REGEX.test(prompt));
+
+  if (isImageIntent) {
+    // Gemini image generation (Imagen 3, gemini-*-flash-image) requires a paid plan —
+    // the free tier quota is 0 for all image generation models.
+    // Instead we use Pollinations.AI: a completely free, no-auth AI image generation API
+    // that accepts a text prompt and returns a real JPEG image.
+    const encodedPrompt = encodeURIComponent(prompt);
+    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=800&height=600&nologo=true&model=flux`;
+
+    const imageResponse = await fetch(imageUrl, {
+      signal: AbortSignal.timeout(60_000), // 60s timeout for generation
+    });
+
+    if (!imageResponse.ok) {
+      throw new Error(
+        `[Colliq AI] Image generation service returned ${imageResponse.status}: ${imageResponse.statusText}`,
+      );
+    }
+
+    const buffer = await imageResponse.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString("base64");
+    const mimeType = imageResponse.headers.get("content-type") ?? "image/jpeg";
+
+    return {
+      type: "image",
+      prompt,
+      imageData: `data:${mimeType};base64,${base64}`,
+    };
+  }
+
+  // Text Flow
   const system = systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
 
   // Build the user content context
@@ -104,5 +147,5 @@ export async function callGemini({
     },
   });
 
-  return response.text ?? "";
+  return { type: "text", content: response.text ?? "" };
 }

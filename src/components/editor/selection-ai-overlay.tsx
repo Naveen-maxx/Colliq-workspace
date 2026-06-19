@@ -94,11 +94,16 @@ export function SelectionAIOverlay({ editor, isOpen, snapshot, onClose }: Select
         data: {
           prompt: action.prompt,
           selectedText: snapshot.selectedText,
-          documentContext: snapshot.documentContext
+          documentContext: snapshot.documentContext,
+          mode: "text",
         }
       });
-      setSuggestion(res.response);
-      setStatus("success");
+      if (res.response.type === "text") {
+        setSuggestion(res.response.content);
+        setStatus("success");
+      } else {
+        throw new Error("Unexpected image response");
+      }
     } catch(e) {
       setStatus("error");
       toast.error("Failed to generate AI suggestion");

@@ -15,7 +15,7 @@
  */
 
 import { createServerFn } from "@tanstack/react-start";
-import { callGemini } from "../ai";
+import { callGemini, type AIResponse } from "../ai";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,12 +32,19 @@ export interface AskAiInput {
   /**
    * Optional: the currently selected text.
    */
+  /**
+   * Optional: the currently selected text.
+   */
   selectedText?: string;
+  /**
+   * Optional: force mode.
+   */
+  mode?: "auto" | "text" | "image";
 }
 
 export interface AskAiOutput {
-  /** The AI-generated text response. */
-  response: string;
+  /** The AI-generated response (text or image) */
+  response: AIResponse;
 }
 
 // ─── Server Function ──────────────────────────────────────────────────────────
@@ -64,6 +71,7 @@ export const askAi = createServerFn({ method: "POST" })
       prompt: input.prompt.trim(),
       documentContext: input.documentContext,
       selectedText: input.selectedText,
+      mode: input.mode,
     });
 
     return { response };

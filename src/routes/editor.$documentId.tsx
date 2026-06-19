@@ -510,6 +510,29 @@ function EditorPage() {
           <ReadModeView editor={editor} onClose={() => setIsReadMode(false)} />
         </ReadModeErrorBoundary>
       )}
+
+      {/* ── Floating Ask AI Button ────────────────────────────────── */}
+      <AnimatePresence>
+        {!isAskAIOpen && (
+          <motion.button
+            key="ask-ai-fab"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ type: "spring", damping: 18, stiffness: 260 }}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.92 }}
+            onClick={() => setIsAskAIOpen(true)}
+            title="Open Colliq AI"
+            className="fixed bottom-7 right-7 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[var(--accent-violet)] text-white shadow-[0_4px_24px_-4px_rgba(80,60,200,0.55),0_0_0_0_rgba(80,60,200,0.3)] hover:shadow-[0_6px_32px_-4px_rgba(80,60,200,0.65),0_0_0_0_rgba(80,60,200,0.4)] transition-shadow duration-300"
+            style={{ WebkitTapHighlightColor: "transparent" }}
+          >
+            {/* Subtle pulse ring */}
+            <span className="pointer-events-none absolute inset-0 rounded-full animate-[ping_3s_ease-in-out_infinite] bg-primary/20" />
+            <Sparkles size={22} strokeWidth={2} />
+          </motion.button>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
