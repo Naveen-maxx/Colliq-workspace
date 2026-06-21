@@ -42,6 +42,9 @@ import { AskAISidebar } from "@/components/editor/ask-ai-sidebar";
 import { SelectionAIOverlay, type AIStateSnapshot } from "@/components/editor/selection-ai-overlay";
 import { AIPreviewCard } from "@/components/editor/ai-preview-card";
 import { OutlinePopover } from "@/components/editor/outline-popover";
+import { ShareModal, getInitials } from "@/components/editor/share-modal";
+import { getCollaborators, type PermissionData, type Role } from "@/firebase/firestore/sharing";
+import { Lock } from "lucide-react";
 import { FontSize } from "@/components/editor/extensions/font-size";
 import { TextFormattingToolbar } from "@/components/editor/text-formatting-toolbar";
 import { useEditorTypography, UnifiedFontFamilyDropdown, UnifiedFontSizeDropdown, UnifiedFontSizeControl } from "@/components/editor/typography-controls";
@@ -173,6 +176,11 @@ function EditorPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [isReadMode, setIsReadMode] = useState(false);
   const [isAskAIOpen, setIsAskAIOpen] = useState(false);
+  
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [collaborators, setCollaborators] = useState<PermissionData[]>([]);
+  const [userRole, setUserRole] = useState<Role | "unauthorized" | null>(null);
+  const [documentObj, setDocumentObj] = useState<any>(null);
   const [selectionAIState, setSelectionAIState] = useState<{ isOpen: boolean; snapshot: AIStateSnapshot | null }>({ isOpen: false, snapshot: null });
   const [summaryPreviewState, setSummaryPreviewState] = useState({ isOpen: false, title: "", content: "", insertAt: 0, isLoading: false });
   const [outlinePopoverState, setOutlinePopoverState] = useState({ isOpen: false, insertAt: 0, documentContext: "" });
@@ -286,19 +294,59 @@ function EditorPage() {
     if (!user || loading || !editor) return;
     
     let isMounted = true;
-    getDocument(documentId).then(doc => {
+    getDocument(documentId).then(async doc => {
       if (!isMounted) return;
       if (!doc) {
         navigate({ to: "/workspace" });
         return;
       }
       
-      setTitle(doc.title);
-      setFavorite(doc.favorite);
-      if (doc.content && Object.keys(doc.content).length > 0) {
-        editor.commands.setContent(doc.content, { emitUpdate: false });
+      setDocumentObj(doc);
+
+      const isOwner = user.uid === doc.ownerId;
+
+      if (isOwner) {
+        setUserRole("owner");
+        setTitle(doc.title);
+        setFavorite(doc.favorite);
+        if (doc.content && Object.keys(doc.content).length > 0) {
+          editor.commands.setContent(doc.content, { emitUpdate: false });
+        }
+        editor.setEditable(true);
       }
-      setIsDocLoading(false);
+
+      try {
+        const collabs = await getCollaborators(documentId);
+        if (!isMounted) return;
+        setCollaborators(collabs);
+
+        if (!isOwner) {
+          let computedRole: Role | "unauthorized" = "unauthorized";
+          const collab = collabs.find(c => c.userId === user.uid);
+          if (collab) {
+            computedRole = collab.role;
+          } else if (doc.shareMode === "anyone_with_link") {
+            computedRole = doc.linkRole as Role;
+          }
+          setUserRole(computedRole);
+
+          if (computedRole !== "unauthorized") {
+            setTitle(doc.title);
+            setFavorite(doc.favorite);
+            if (doc.content && Object.keys(doc.content).length > 0) {
+              editor.commands.setContent(doc.content, { emitUpdate: false });
+            }
+            editor.setEditable(computedRole === "editor");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load permissions", err);
+        if (!isOwner) {
+          setUserRole("unauthorized");
+        }
+      } finally {
+        setIsDocLoading(false);
+      }
     }).catch(() => {
       if (isMounted) navigate({ to: "/workspace" });
     });
@@ -317,6 +365,26 @@ function EditorPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F1F2F5]">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </main>
+    );
+  }
+
+  if (userRole === "unauthorized") {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-[#F1F2F5] px-6 text-center">
+        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-border">
+          <Lock className="text-muted-foreground" size={28} />
+        </div>
+        <h1 className="mb-2 text-2xl font-semibold text-foreground">Access Denied</h1>
+        <p className="mb-6 max-w-sm text-[15px] text-muted-foreground">
+          You don't have permission to access this document. Please request access from the owner.
+        </p>
+        <button
+          onClick={() => navigate({ to: "/workspace" })}
+          className="rounded-xl bg-primary px-5 py-2.5 text-[14px] font-medium text-white shadow-sm transition-all hover:bg-primary/90"
+        >
+          Return to Workspace
+        </button>
       </main>
     );
   }
@@ -403,23 +471,28 @@ function EditorPage() {
               onReadMode={() => setIsReadMode(true)}
               onVersionHistory={() => setVersionHistoryOpen(true)}
               onAskAI={() => setIsAskAIOpen(true)}
+              onShare={() => setShareModalOpen(true)}
+              userRole={userRole}
+              collaborators={collaborators}
             />
-            <MenuBar 
-              editor={editor}
-              onNewDocument={handleNew}
-              onRenameDocument={handleRename}
-              onDeleteDocument={handleDelete}
-              onSaveDocument={handleSave}
-              onOpenDocument={() => setFileBrowserOpen(true)}
-              onVersionHistory={() => setVersionHistoryOpen(true)}
-              onSetPageWidth={setPageWidth}
-              onTogglePageMode={() => setPageMode((p) => !p)}
-              onWordCount={() => setWordCountOpen(true)}
-              onImport={() => fileInputRef.current?.click()}
-              marginState={marginState}
-              onSetMarginState={setMarginState}
-              onReadMode={() => setIsReadMode(true)}
-            />
+            {(userRole === "owner" || userRole === "editor") && (
+              <MenuBar 
+                editor={editor}
+                onNewDocument={handleNew}
+                onRenameDocument={handleRename}
+                onDeleteDocument={handleDelete}
+                onSaveDocument={handleSave}
+                onOpenDocument={() => setFileBrowserOpen(true)}
+                onVersionHistory={() => setVersionHistoryOpen(true)}
+                onSetPageWidth={setPageWidth}
+                onTogglePageMode={() => setPageMode((p) => !p)}
+                onWordCount={() => setWordCountOpen(true)}
+                onImport={() => fileInputRef.current?.click()}
+                marginState={marginState}
+                onSetMarginState={setMarginState}
+                onReadMode={() => setIsReadMode(true)}
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -428,6 +501,19 @@ function EditorPage() {
 
       <FileBrowserModal isOpen={fileBrowserOpen} onClose={() => setFileBrowserOpen(false)} />
       <VersionHistorySidebar isOpen={versionHistoryOpen} onClose={() => setVersionHistoryOpen(false)} documentId={documentId} editor={editor} />
+      
+      {documentObj && (
+        <ShareModal
+          documentId={documentId}
+          document={documentObj}
+          isOpen={shareModalOpen}
+          onClose={() => setShareModalOpen(false)}
+          onUpdate={async () => {
+            const collabs = await getCollaborators(documentId);
+            setCollaborators(collabs);
+          }}
+        />
+      )}
       <AskAISidebar isOpen={isAskAIOpen} onClose={() => setIsAskAIOpen(false)} editor={editor} />
       <SelectionAIOverlay 
         editor={editor} 
@@ -548,6 +634,9 @@ function TopHeader({
   onReadMode,
   onVersionHistory,
   onAskAI,
+  onShare,
+  userRole,
+  collaborators,
 }: {
   user: any;
   title: string;
@@ -558,6 +647,9 @@ function TopHeader({
   onReadMode: () => void;
   onVersionHistory?: () => void;
   onAskAI: () => void;
+  onShare: () => void;
+  userRole: Role | "unauthorized" | null;
+  collaborators: PermissionData[];
 }) {
   const initials = (user.displayName || user.email || "U").trim().slice(0, 1).toUpperCase();
 
@@ -604,10 +696,37 @@ function TopHeader({
             <BookOpen size={14} strokeWidth={1.8} />
             <span className="hidden lg:inline">Read Mode</span>
           </button>
+          
+          <div className="mx-1 h-4 w-px bg-border-soft" />
+          
+          {/* Permission Indicator */}
+          {userRole && userRole !== "unauthorized" && (
+            <div className="flex h-9 items-center px-3 text-[12.5px] font-medium text-foreground/75 bg-surface-muted/50 rounded-full">
+              {userRole === "owner" || userRole === "editor" ? "Editing" : userRole === "commenter" ? "Commenting" : "Viewing"}
+            </div>
+          )}
+
           <HeaderBtn icon={History} label="Version history" onClick={onVersionHistory} />
           <HeaderBtn icon={MessageSquare} label="Comments" />
           <HeaderBtn icon={Sparkles} label="Ask AI" highlighted onClick={onAskAI} />
-          <button className="ml-1 flex h-9 items-center gap-2 rounded-full bg-primary px-4 text-[13px] font-medium text-white shadow-[0_4px_12px_-4px_color-mix(in_oklab,var(--primary)_55%,transparent)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_92%,black)] active:scale-[0.98]">
+          
+          <div className="mx-1 h-4 w-px bg-border-soft" />
+          
+          {/* Collaborator Avatars */}
+          <div className="mr-2 flex -space-x-2">
+            {collaborators.slice(0, 4).map(c => (
+              <div key={c.userId} className="z-10 flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-violet-100 text-xs font-semibold text-violet-700 shadow-sm">
+                {c.avatar ? <img src={c.avatar} alt={c.name} className="h-full w-full object-cover" /> : getInitials(c.name || c.email)}
+              </div>
+            ))}
+            {collaborators.length > 4 && (
+              <div className="z-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-surface-muted text-[10px] font-semibold text-muted-foreground shadow-sm">
+                +{collaborators.length - 4}
+              </div>
+            )}
+          </div>
+
+          <button onClick={onShare} className="ml-1 flex h-9 items-center gap-2 rounded-full bg-primary px-4 text-[13px] font-medium text-white shadow-[0_4px_12px_-4px_color-mix(in_oklab,var(--primary)_55%,transparent)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_92%,black)] active:scale-[0.98]">
             <Share2 size={14} strokeWidth={2} />
             Share
           </button>

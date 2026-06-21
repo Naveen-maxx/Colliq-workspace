@@ -13,6 +13,8 @@ export type DocumentData = {
   updatedAt: any;
   lastOpenedAt: any;
   deleted: boolean;
+  shareMode: "restricted" | "anyone_with_link";
+  linkRole: "viewer" | "commenter" | "editor";
 };
 
 /**
@@ -39,6 +41,8 @@ export async function createDocument(ownerId: string, options?: CreateDocumentOp
     updatedAt: serverTimestamp(),
     lastOpenedAt: serverTimestamp(),
     deleted: false,
+    shareMode: "restricted",
+    linkRole: "viewer",
   };
   await setDoc(docRef, newDoc);
   return docRef.id;
@@ -111,6 +115,8 @@ export async function duplicateDocument(sourceId: string, ownerId: string): Prom
     updatedAt: serverTimestamp(),
     lastOpenedAt: serverTimestamp(),
     deleted: false,
+    shareMode: "restricted",
+    linkRole: "viewer",
   };
   await setDoc(docRef, newDoc);
   return docRef.id;
