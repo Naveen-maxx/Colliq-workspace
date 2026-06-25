@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState, useMemo, forwardRef } from "react";
+import { useEffect, useRef, useState, useMemo, forwardRef, useCallback } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -45,6 +45,8 @@ import { OutlinePopover } from "@/components/editor/outline-popover";
 import { ShareModal, getInitials } from "@/components/editor/share-modal";
 import { getCollaborators, type PermissionData, type Role } from "@/firebase/firestore/sharing";
 import { Lock } from "lucide-react";
+import Collaboration from '@tiptap/extension-collaboration';
+import { getCollabProvider, releaseCollabProvider } from "@/lib/collaboration";
 import { FontSize } from "@/components/editor/extensions/font-size";
 import { TextFormattingToolbar } from "@/components/editor/text-formatting-toolbar";
 import { useEditorTypography, UnifiedFontFamilyDropdown, UnifiedFontSizeDropdown, UnifiedFontSizeControl } from "@/components/editor/typography-controls";
@@ -160,6 +162,7 @@ function EditorPage() {
   const { documentId } = Route.useParams();
 
   const [isDocLoading, setIsDocLoading] = useState(true);
+  const [editorReady, setEditorReady] = useState(false);
 
   const [title, setTitle] = useState("Untitled document");
   const [favorite, setFavorite] = useState(false);
@@ -205,12 +208,25 @@ function EditorPage() {
       setOutlinePopoverState({ isOpen: true, insertAt, documentContext }),
   }), []);
 
+  // --- Yjs collaboration setup ---
+  // useMemo ensures one Y.Doc + provider per documentId mount
+  const { doc: ydoc, provider } = useMemo(() => getCollabProvider(documentId), [documentId]);
+  const firestoreContentRef = useRef<any>(null); // Content fetched from Firestore
+  const firestoreSeededRef = useRef(false);      // Guard: only seed ydoc once
+
   const editor = useEditor({
+    // Start locked; we unlock after role is resolved
+    editable: false,
     extensions: [
-      StarterKit.configure({ 
+      // StarterKit: disable built-in history so Yjs UndoManager takes over
+      StarterKit.configure({
         heading: { levels: [1, 2, 3] },
         codeBlock: false,
+        // Disable StarterKit history so Collaboration's UndoManager takes over
+        ...(({ history: false } as any)),
       }),
+      // Collaboration MUST come before other document-mutating extensions
+      Collaboration.configure({ document: ydoc }),
       Underline,
       TextStyle,
       FontSize,
@@ -222,7 +238,7 @@ function EditorPage() {
         autolink: true,
         HTMLAttributes: { class: "text-primary underline underline-offset-2 transition-colors hover:text-primary-soft cursor-pointer" },
       }),
-      Placeholder.configure({ placeholder: "Start writing, or press ‘/’ for commands…" }),
+      Placeholder.configure({ placeholder: "Start writing, or press '/' for commands…" }),
       TaskList.configure({ HTMLAttributes: { class: "not-prose pl-2" } }),
       TaskItem.configure({ nested: true }),
       ResizableImage,
@@ -235,9 +251,7 @@ function EditorPage() {
       Subscript,
       Superscript,
       CodeBlockLowlight.extend({
-        addNodeView() {
-          return ReactNodeViewRenderer(CodeBlockComponent);
-        },
+        addNodeView() { return ReactNodeViewRenderer(CodeBlockComponent); },
       }).configure({ lowlight }),
       Indent,
       PageBreak,
@@ -249,18 +263,19 @@ function EditorPage() {
     content: "",
     editorProps: {
       attributes: {
-        class:
-          "colliq-prose focus:outline-none min-h-[1000px] px-[96px] py-[96px] text-[15.5px] leading-[1.75] text-foreground",
+        class: "colliq-prose focus:outline-none min-h-[1000px] px-[96px] py-[96px] text-[15.5px] leading-[1.75] text-foreground",
       },
     },
     onCreate: ({ editor }) => {
       editorRef.current = editor;
     },
     onUpdate: ({ editor }) => {
-      // Keep editorRef in sync
       editorRef.current = editor;
+      // Only save if editor is unlocked (i.e. not just hydrating)
+      if (!editor.isEditable) return;
       setSaveStatus("saving");
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      // 5-second debounce as per spec
       saveTimer.current = setTimeout(async () => {
         try {
           await updateDocument(documentId, { content: editor.getJSON() });
@@ -268,9 +283,69 @@ function EditorPage() {
         } catch (e) {
           setSaveStatus("error");
         }
-      }, 1200);
+      }, 5000);
     },
   });
+
+  /**
+   * Seed Firestore content into the ydoc exactly once, and only if
+   * the remote Yjs doc is still empty (no peers have content yet).
+   * Uses emitUpdate: false to avoid triggering an immediate Firestore write.
+   */
+  const seedYdocFromFirestore = useCallback(() => {
+    if (firestoreSeededRef.current) return; // Already seeded
+    if (!editor) return;
+    if (!firestoreContentRef.current) return;
+
+    // Only seed if no peer has sent content yet (ydoc is empty)
+    if (editor.isEmpty) {
+      console.log('[collab] Seeding ydoc from Firestore content (editor was empty)');
+      editor.commands.setContent(firestoreContentRef.current, { emitUpdate: false });
+    } else {
+      console.log('[collab] Skipping Firestore seed — ydoc already has content from peers');
+    }
+    firestoreSeededRef.current = true;
+    setEditorReady(true);
+  }, [editor]);
+
+  // Attempt to seed as soon as the editor mounts
+  useEffect(() => {
+    if (editor) seedYdocFromFirestore();
+  }, [editor, seedYdocFromFirestore]);
+
+  // Also attempt to seed on provider sync (online path)
+  useEffect(() => {
+    if (!provider) {
+      // Offline / SSR: seed immediately after a short grace period
+      const t = setTimeout(seedYdocFromFirestore, 500);
+      return () => clearTimeout(t);
+    }
+
+    const handleSync = (isSynced: boolean) => {
+      if (isSynced) {
+        console.log('[collab] Provider synced — attempting Firestore seed');
+        seedYdocFromFirestore();
+      }
+    };
+
+    provider.on('sync', handleSync);
+
+    // Offline fallback: if provider never syncs within 3s, seed anyway so user can edit
+    const offlineFallback = setTimeout(() => {
+      console.log('[collab] Offline fallback — seeding without sync confirmation');
+      seedYdocFromFirestore();
+    }, 3000);
+
+    return () => {
+      provider.off('sync', handleSync);
+      clearTimeout(offlineFallback);
+    };
+  }, [provider, seedYdocFromFirestore]);
+
+  // Release provider on unmount
+  useEffect(() => {
+    return () => releaseCollabProvider(documentId);
+  }, [documentId]);
 
   useEffect(() => {
     if (!editor) return;
@@ -304,55 +379,65 @@ function EditorPage() {
       setDocumentObj(doc);
 
       const isOwner = user.uid === doc.ownerId;
+      console.log(`[editor] Document loaded. isOwner=${isOwner}, shareMode=${doc.shareMode}, linkRole=${doc.linkRole}`);
 
+      // Store content for seeding into Yjs once the provider syncs
+      if (doc.content && Object.keys(doc.content).length > 0) {
+        firestoreContentRef.current = doc.content;
+      }
+
+      // --- STEP 1: Immediately resolve title/favorite for owners ---
       if (isOwner) {
         setUserRole("owner");
         setTitle(doc.title);
         setFavorite(doc.favorite);
-        if (doc.content && Object.keys(doc.content).length > 0) {
-          editor.commands.setContent(doc.content, { emitUpdate: false });
-        }
-        editor.setEditable(true);
+        // If provider already synced or offline, seed now
+        seedYdocFromFirestore();
       }
 
-      try {
-        const collabs = await getCollaborators(documentId);
-        if (!isMounted) return;
-        setCollaborators(collabs);
+      // --- STEP 2: Load collaborators (never throws — returns [] on failure) ---
+      const collabs = await getCollaborators(documentId);
+      if (!isMounted) return;
+      setCollaborators(collabs);
 
-        if (!isOwner) {
-          let computedRole: Role | "unauthorized" = "unauthorized";
-          const collab = collabs.find(c => c.userId === user.uid);
-          if (collab) {
-            computedRole = collab.role;
-          } else if (doc.shareMode === "anyone_with_link") {
-            computedRole = doc.linkRole as Role;
-          }
-          setUserRole(computedRole);
+      // --- STEP 3: Resolve role for non-owners ---
+      if (!isOwner) {
+        let computedRole: Role | "unauthorized" = "unauthorized";
 
-          if (computedRole !== "unauthorized") {
-            setTitle(doc.title);
-            setFavorite(doc.favorite);
-            if (doc.content && Object.keys(doc.content).length > 0) {
-              editor.commands.setContent(doc.content, { emitUpdate: false });
-            }
-            editor.setEditable(computedRole === "editor");
-          }
+        const collab = collabs.find(c => c.userId === user.uid);
+        if (collab) {
+          computedRole = collab.role;
+          console.log(`[editor] Explicit collaborator, role: ${computedRole}`);
+        } else if (doc.shareMode === "anyone_with_link") {
+          computedRole = doc.linkRole as Role;
+          console.log(`[editor] Link sharing active → granting linkRole: ${computedRole}`);
+        } else {
+          console.log(`[editor] Access denied`);
         }
-      } catch (err) {
-        console.error("Failed to load permissions", err);
-        if (!isOwner) {
-          setUserRole("unauthorized");
+
+        setUserRole(computedRole);
+
+        if (computedRole !== "unauthorized") {
+          setTitle(doc.title);
+          setFavorite(doc.favorite);
+          // Seed content into editor
+          seedYdocFromFirestore();
+        } else {
+          // Unauthorized: mark loading done so we can show the access denied screen
+          setIsDocLoading(false);
+          return;
         }
-      } finally {
-        setIsDocLoading(false);
       }
-    }).catch(() => {
+
+      setIsDocLoading(false);
+    }).catch((err) => {
+      console.error("[editor] Failed to load document", err);
       if (isMounted) navigate({ to: "/workspace" });
     });
     
     return () => { isMounted = false; };
   }, [documentId, user, loading, navigate, editor]);
+
 
   useEffect(
     () => () => {
@@ -360,6 +445,12 @@ function EditorPage() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (editorReady && editor && userRole !== "unauthorized") {
+      editor.setEditable(userRole === "owner" || userRole === "editor");
+    }
+  }, [editorReady, editor, userRole]);
 
   if (loading || !user || isDocLoading) {
     return (

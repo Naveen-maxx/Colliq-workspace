@@ -88,33 +88,32 @@ export function ShareModal({
   }, [isOpen, document.shareMode, document.linkRole]);
 
   async function loadCollaborators() {
-    try {
-      setLoading(true);
-      const data = await getCollaborators(documentId);
-      setCollaborators(data);
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load collaborators");
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true);
+    // getCollaborators never throws — it returns [] and logs on failure
+    const data = await getCollaborators(documentId);
+    setCollaborators(data);
+    setLoading(false);
   }
 
   async function handleInvite() {
-    if (!inviteEmail.trim()) return;
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) return;
     setInviting(true);
     setInviteError(null);
     try {
-      await addCollaboratorByEmail(documentId, inviteEmail.trim(), inviteRole);
+      await addCollaboratorByEmail(documentId, email, inviteRole);
       toast.success("User added successfully");
       setInviteEmail("");
       loadCollaborators();
       onUpdate();
     } catch (err: any) {
+      console.error("[ShareModal] handleInvite error:", err?.message, err);
       if (err.message === "USER_NOT_FOUND") {
         setInviteError("User not found. This person must create a Colliq account before you can share documents with them.");
+      } else if (err.message?.startsWith("QUERY_ERROR")) {
+        setInviteError(`Could not search for this user. Check your Firestore security rules allow reading the 'users' collection. (${err.message})`);
       } else {
-        setInviteError("Failed to add user. Please try again.");
+        setInviteError(`Failed to add user: ${err.message || "Unknown error"}. Check the browser console for details.`);
       }
     } finally {
       setInviting(false);
