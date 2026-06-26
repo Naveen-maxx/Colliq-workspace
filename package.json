@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "collab": "node yjs-server.mjs",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
@@ -50,7 +51,7 @@
     "@tiptap/extension-character-count": "^3.23.6",
     "@tiptap/extension-code-block-lowlight": "^3.23.6",
     "@tiptap/extension-collaboration": "^3.23.6",
-    "@tiptap/extension-collaboration-cursor": "^2.27.2",
+    "@tiptap/extension-collaboration-cursor": "^3.0.0-next.6",
     "@tiptap/extension-color": "^3.23.6",
     "@tiptap/extension-font-family": "^3.23.6",
     "@tiptap/extension-highlight": "^3.23.6",
@@ -126,6 +127,7 @@
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "ws": "^8.21.0"
   }
 }

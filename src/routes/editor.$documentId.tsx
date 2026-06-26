@@ -46,6 +46,7 @@ import { ShareModal, getInitials } from "@/components/editor/share-modal";
 import { getCollaborators, type PermissionData, type Role } from "@/firebase/firestore/sharing";
 import { Lock } from "lucide-react";
 import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { getCollabProvider, releaseCollabProvider } from "@/lib/collaboration";
 import { FontSize } from "@/components/editor/extensions/font-size";
 import { TextFormattingToolbar } from "@/components/editor/text-formatting-toolbar";
@@ -120,6 +121,9 @@ import {
   X,
   SplitSquareHorizontal,
   BookOpen,
+  WifiOff,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import colliqLogo from "@/assets/landing/colliq-logo.png";
@@ -154,7 +158,14 @@ export const Route = createFileRoute("/editor/$documentId")({
   component: EditorPage,
 });
 
-type SaveStatus = "idle" | "saving" | "saved" | "error";
+export type ActiveUser = {
+  id: string;
+  name: string;
+  avatar: string | null;
+  color: string;
+};
+
+type SaveStatus = "idle" | "saving" | "saved" | "error" | "offline" | "reconnecting";
 
 function EditorPage() {
   const { user, loading } = useAuth();
@@ -182,6 +193,7 @@ function EditorPage() {
   
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [collaborators, setCollaborators] = useState<PermissionData[]>([]);
+  const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
   const [userRole, setUserRole] = useState<Role | "unauthorized" | null>(null);
   const [documentObj, setDocumentObj] = useState<any>(null);
   const [selectionAIState, setSelectionAIState] = useState<{ isOpen: boolean; snapshot: AIStateSnapshot | null }>({ isOpen: false, snapshot: null });
@@ -209,24 +221,39 @@ function EditorPage() {
   }), []);
 
   // --- Yjs collaboration setup ---
-  // useMemo ensures one Y.Doc + provider per documentId mount
+  // useMemo is SSR-safe now: collaboration.ts returns a non-cached doc on the server.
   const { doc: ydoc, provider } = useMemo(() => getCollabProvider(documentId), [documentId]);
-  const firestoreContentRef = useRef<any>(null); // Content fetched from Firestore
-  const firestoreSeededRef = useRef(false);      // Guard: only seed ydoc once
+
+  // Tracks whether this user has been granted access (role resolved from Firestore)
+  const [accessGranted, setAccessGranted] = useState(false);
+  const firestoreContentRef = useRef<any>(null); // Raw Firestore JSON content
+  const contentSeededRef = useRef(false);        // Guard: seed editor exactly once
 
   const editor = useEditor({
-    // Start locked; we unlock after role is resolved
-    editable: false,
+    editable: false, // Unlocked after role + seeding completes
     extensions: [
-      // StarterKit: disable built-in history so Yjs UndoManager takes over
+      // Disable StarterKit history — Collaboration extension provides Yjs-backed undo
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
         codeBlock: false,
-        // Disable StarterKit history so Collaboration's UndoManager takes over
-        ...(({ history: false } as any)),
-      }),
-      // Collaboration MUST come before other document-mutating extensions
+        history: false,
+      } as any),
+      // Collaboration must be registered before any extension that mutates the document
       Collaboration.configure({ document: ydoc }),
+      ...(provider ? [
+        CollaborationCursor.configure({
+          provider: provider,
+          user: {
+            name: user?.displayName || user?.email || "Anonymous",
+            color: (() => {
+              if (!user) return "#f87171";
+              const colors = ["#f87171", "#fb923c", "#fbbf24", "#34d399", "#38bdf8", "#818cf8", "#a78bfa", "#f472b6"];
+              const charCodeSum = user.uid.split('').reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0);
+              return colors[charCodeSum % colors.length];
+            })(),
+          },
+        })
+      ] : []),
       Underline,
       TextStyle,
       FontSize,
@@ -266,191 +293,244 @@ function EditorPage() {
         class: "colliq-prose focus:outline-none min-h-[1000px] px-[96px] py-[96px] text-[15.5px] leading-[1.75] text-foreground",
       },
     },
-    onCreate: ({ editor }) => {
-      editorRef.current = editor;
-    },
+    onCreate: ({ editor }) => { editorRef.current = editor; },
     onUpdate: ({ editor }) => {
       editorRef.current = editor;
-      // Only save if editor is unlocked (i.e. not just hydrating)
-      if (!editor.isEditable) return;
+      if (!editor.isEditable) return; // Don't save during hydration
       setSaveStatus("saving");
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      // 5-second debounce as per spec
       saveTimer.current = setTimeout(async () => {
         try {
           await updateDocument(documentId, { content: editor.getJSON() });
           setSaveStatus("saved");
-        } catch (e) {
+        } catch {
           setSaveStatus("error");
         }
       }, 5000);
     },
   });
 
-  /**
-   * Seed Firestore content into the ydoc exactly once, and only if
-   * the remote Yjs doc is still empty (no peers have content yet).
-   * Uses emitUpdate: false to avoid triggering an immediate Firestore write.
-   */
-  const seedYdocFromFirestore = useCallback(() => {
-    if (firestoreSeededRef.current) return; // Already seeded
-    if (!editor) return;
-    if (!firestoreContentRef.current) return;
-
-    // Only seed if no peer has sent content yet (ydoc is empty)
-    if (editor.isEmpty) {
-      console.log('[collab] Seeding ydoc from Firestore content (editor was empty)');
-      editor.commands.setContent(firestoreContentRef.current, { emitUpdate: false });
-    } else {
-      console.log('[collab] Skipping Firestore seed — ydoc already has content from peers');
-    }
-    firestoreSeededRef.current = true;
-    setEditorReady(true);
-  }, [editor]);
-
-  // Attempt to seed as soon as the editor mounts
+  // ── Effect 1: Fetch document + resolve permissions ────────────────────────
+  // Does NOT depend on `editor` — fires as soon as auth resolves.
   useEffect(() => {
-    if (editor) seedYdocFromFirestore();
-  }, [editor, seedYdocFromFirestore]);
+    if (!user || loading) return;
+    let isMounted = true;
 
-  // Also attempt to seed on provider sync (online path)
-  useEffect(() => {
-    if (!provider) {
-      // Offline / SSR: seed immediately after a short grace period
-      const t = setTimeout(seedYdocFromFirestore, 500);
-      return () => clearTimeout(t);
-    }
+    getDocument(documentId).then(async doc => {
+      if (!isMounted) return;
+      if (!doc) { navigate({ to: "/workspace" }); return; }
 
-    const handleSync = (isSynced: boolean) => {
-      if (isSynced) {
-        console.log('[collab] Provider synced — attempting Firestore seed');
-        seedYdocFromFirestore();
+      setDocumentObj(doc);
+
+      // Store content for seeding (Effect 2 reads this ref)
+      if (doc.content && Object.keys(doc.content).length > 0) {
+        firestoreContentRef.current = doc.content;
       }
+
+      const isOwner = user.uid === doc.ownerId;
+      console.log(`[editor] doc loaded — isOwner=${isOwner}, shareMode=${doc.shareMode}, linkRole=${doc.linkRole}`);
+
+      if (isOwner) {
+        setUserRole("owner");
+        setTitle(doc.title);
+        setFavorite(doc.favorite);
+        setIsDocLoading(false);
+        setAccessGranted(true); // Triggers Effect 2
+        return;
+      }
+
+      // Non-owner: resolve role from collaborators list
+      const collabs = await getCollaborators(documentId);
+      if (!isMounted) return;
+      setCollaborators(collabs);
+
+      let computedRole: Role | "unauthorized" = "unauthorized";
+      const collab = collabs.find(c => c.userId === user.uid);
+      if (collab) {
+        computedRole = collab.role;
+        console.log(`[editor] collaborator role: ${computedRole}`);
+      } else if (doc.shareMode === "anyone_with_link") {
+        computedRole = doc.linkRole as Role;
+        console.log(`[editor] link sharing → role: ${computedRole}`);
+      } else {
+        console.log(`[editor] access denied`);
+      }
+
+      setUserRole(computedRole);
+      setIsDocLoading(false);
+
+      if (computedRole !== "unauthorized") {
+        setTitle(doc.title);
+        setFavorite(doc.favorite);
+        setAccessGranted(true); // Triggers Effect 2
+      }
+    }).catch(err => {
+      console.error("[editor] failed to load document", err);
+      if (isMounted) navigate({ to: "/workspace" });
+    });
+
+    return () => { isMounted = false; };
+  }, [documentId, user, loading, navigate]);
+
+  // ── Effect 2: Seed content + enable editor ────────────────────────────────
+  // Runs only after access is granted AND editor is mounted.
+  // Waits for Yjs provider sync (online) or falls back after 2s (offline).
+  useEffect(() => {
+    if (!accessGranted || !editor || contentSeededRef.current) return;
+
+    const doSeed = () => {
+      if (contentSeededRef.current) return;
+      contentSeededRef.current = true;
+
+      if (firestoreContentRef.current && editor.isEmpty) {
+        console.log('[collab] Seeding editor from Firestore content');
+        editor.commands.setContent(firestoreContentRef.current, { emitUpdate: false });
+      } else if (!editor.isEmpty) {
+        console.log('[collab] Editor already has content from Yjs peers — skipping Firestore seed');
+      } else {
+        console.log('[collab] No Firestore content to seed (new document)');
+      }
+
+      setEditorReady(true);
     };
 
+    // No provider (SSR fallback or provider not initialized): seed immediately
+    if (!provider) {
+      doSeed();
+      return;
+    }
+
+    // If provider is already synced (fast reconnect or same-tab reuse): seed now
+    if ((provider as any).synced) {
+      doSeed();
+      return;
+    }
+
+    // Online: wait for sync event
+    const handleSync = (isSynced: boolean) => { if (isSynced) doSeed(); };
     provider.on('sync', handleSync);
 
-    // Offline fallback: if provider never syncs within 3s, seed anyway so user can edit
+    // Offline fallback: seed from Firestore after 2s if sync never arrives
     const offlineFallback = setTimeout(() => {
-      console.log('[collab] Offline fallback — seeding without sync confirmation');
-      seedYdocFromFirestore();
-    }, 3000);
+      console.log('[collab] Offline fallback — seeding from Firestore after timeout');
+      doSeed();
+    }, 2000);
 
     return () => {
       provider.off('sync', handleSync);
       clearTimeout(offlineFallback);
     };
-  }, [provider, seedYdocFromFirestore]);
+  }, [accessGranted, editor, provider]);
 
-  // Release provider on unmount
+  // ── Track Provider Connection Status ──────────────────────────────────────
+  useEffect(() => {
+    if (!provider) return;
+
+    const handleStatus = (event: { status: 'connected' | 'disconnected' | 'connecting' }) => {
+      if (event.status === 'disconnected') {
+        setSaveStatus("offline");
+      } else if (event.status === 'connecting') {
+        setSaveStatus("reconnecting");
+      } else if (event.status === 'connected') {
+        // Only set to saved if we were offline/reconnecting,
+        // otherwise let the save timer manage it.
+        setSaveStatus((prev) => 
+          (prev === "offline" || prev === "reconnecting") ? "saved" : prev
+        );
+      }
+    };
+
+    provider.on('status', handleStatus);
+    
+    // Check initial state
+    if (provider.wsconnected) {
+      // it's connected, saveStatus is likely default "saved"
+    } else {
+      setSaveStatus("reconnecting");
+    }
+
+    return () => {
+      provider.off('status', handleStatus);
+    };
+  }, [provider]);
+
+  // ── Track Provider Awareness (Active Users) ─────────────────────────────
+  useEffect(() => {
+    if (!provider || !user) return;
+
+    const awareness = provider.awareness;
+    
+    // Assign a deterministic color based on the user's ID
+    const colors = ["#f87171", "#fb923c", "#fbbf24", "#34d399", "#38bdf8", "#818cf8", "#a78bfa", "#f472b6"];
+    const charCodeSum = user.uid.split('').reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0);
+    const color = colors[charCodeSum % colors.length];
+
+    awareness.setLocalStateField('user', {
+      id: user.uid,
+      name: user.displayName || user.email || "Anonymous",
+      avatar: user.photoURL || null,
+      color,
+    });
+
+    const updateActiveUsers = () => {
+      const states = Array.from(awareness.getStates().values());
+      const usersMap = new Map<string, ActiveUser>();
+      
+      states.forEach((state: any) => {
+        if (state.user && state.user.id) {
+          if (state.user.id !== user.uid) {
+            usersMap.set(state.user.id, state.user as ActiveUser);
+          }
+        }
+      });
+      
+      setActiveUsers(Array.from(usersMap.values()));
+    };
+
+    awareness.on('change', updateActiveUsers);
+    updateActiveUsers(); // Initial fetch
+
+    return () => {
+      awareness.off('change', updateActiveUsers);
+    };
+  }, [provider, user]);
+
+  // ── Cleanup provider on unmount ───────────────────────────────────────────
   useEffect(() => {
     return () => releaseCollabProvider(documentId);
   }, [documentId]);
 
-  useEffect(() => {
-    if (!editor) return;
-    let padding = { top: 96, right: 96, bottom: 96, left: 96 };
-    if (marginState === "narrow") padding = { top: 48, right: 48, bottom: 48, left: 48 };
-    if (marginState === "moderate") padding = { top: 96, right: 72, bottom: 96, left: 72 };
-    if (marginState === "wide") padding = { top: 96, right: 192, bottom: 96, left: 192 };
-    if (marginState === "custom") padding = customMargins;
-    
-    editor.setOptions({
-      editorProps: {
-        attributes: {
-          class: "colliq-prose focus:outline-none min-h-[1056px] text-[15.5px] leading-[1.75] text-foreground",
-          style: `padding: ${padding.top}px ${padding.right}px ${padding.bottom}px ${padding.left}px;`,
-        }
-      }
-    });
-  }, [editor, marginState, customMargins]);
+  // ── Cleanup save timer on unmount ─────────────────────────────────────────
+  useEffect(() => () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+  }, []);
 
-  useEffect(() => {
-    if (!user || loading || !editor) return;
-    
-    let isMounted = true;
-    getDocument(documentId).then(async doc => {
-      if (!isMounted) return;
-      if (!doc) {
-        navigate({ to: "/workspace" });
-        return;
-      }
-      
-      setDocumentObj(doc);
-
-      const isOwner = user.uid === doc.ownerId;
-      console.log(`[editor] Document loaded. isOwner=${isOwner}, shareMode=${doc.shareMode}, linkRole=${doc.linkRole}`);
-
-      // Store content for seeding into Yjs once the provider syncs
-      if (doc.content && Object.keys(doc.content).length > 0) {
-        firestoreContentRef.current = doc.content;
-      }
-
-      // --- STEP 1: Immediately resolve title/favorite for owners ---
-      if (isOwner) {
-        setUserRole("owner");
-        setTitle(doc.title);
-        setFavorite(doc.favorite);
-        // If provider already synced or offline, seed now
-        seedYdocFromFirestore();
-      }
-
-      // --- STEP 2: Load collaborators (never throws — returns [] on failure) ---
-      const collabs = await getCollaborators(documentId);
-      if (!isMounted) return;
-      setCollaborators(collabs);
-
-      // --- STEP 3: Resolve role for non-owners ---
-      if (!isOwner) {
-        let computedRole: Role | "unauthorized" = "unauthorized";
-
-        const collab = collabs.find(c => c.userId === user.uid);
-        if (collab) {
-          computedRole = collab.role;
-          console.log(`[editor] Explicit collaborator, role: ${computedRole}`);
-        } else if (doc.shareMode === "anyone_with_link") {
-          computedRole = doc.linkRole as Role;
-          console.log(`[editor] Link sharing active → granting linkRole: ${computedRole}`);
-        } else {
-          console.log(`[editor] Access denied`);
-        }
-
-        setUserRole(computedRole);
-
-        if (computedRole !== "unauthorized") {
-          setTitle(doc.title);
-          setFavorite(doc.favorite);
-          // Seed content into editor
-          seedYdocFromFirestore();
-        } else {
-          // Unauthorized: mark loading done so we can show the access denied screen
-          setIsDocLoading(false);
-          return;
-        }
-      }
-
-      setIsDocLoading(false);
-    }).catch((err) => {
-      console.error("[editor] Failed to load document", err);
-      if (isMounted) navigate({ to: "/workspace" });
-    });
-    
-    return () => { isMounted = false; };
-  }, [documentId, user, loading, navigate, editor]);
-
-
-  useEffect(
-    () => () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    },
-    [],
-  );
-
+  // ── Enable/disable editing based on role ──────────────────────────────────
   useEffect(() => {
     if (editorReady && editor && userRole !== "unauthorized") {
       editor.setEditable(userRole === "owner" || userRole === "editor");
     }
   }, [editorReady, editor, userRole]);
+
+  // ── Apply margin/padding to editor ───────────────────────────────────────
+  useEffect(() => {
+    if (!editor) return;
+    let padding = { top: 96, right: 96, bottom: 96, left: 96 };
+    if (marginState === "narrow")   padding = { top: 48, right: 48, bottom: 48, left: 48 };
+    if (marginState === "moderate") padding = { top: 96, right: 72, bottom: 96, left: 72 };
+    if (marginState === "wide")     padding = { top: 96, right: 192, bottom: 96, left: 192 };
+    if (marginState === "custom")   padding = customMargins;
+    editor.setOptions({
+      editorProps: {
+        attributes: {
+          class: "colliq-prose focus:outline-none min-h-[1056px] text-[15.5px] leading-[1.75] text-foreground",
+          style: `padding: ${padding.top}px ${padding.right}px ${padding.bottom}px ${padding.left}px;`,
+        },
+      },
+    });
+  }, [editor, marginState, customMargins]);
+
+
 
   if (loading || !user || isDocLoading) {
     return (
@@ -459,6 +539,7 @@ function EditorPage() {
       </main>
     );
   }
+
 
   if (userRole === "unauthorized") {
     return (
@@ -564,7 +645,7 @@ function EditorPage() {
               onAskAI={() => setIsAskAIOpen(true)}
               onShare={() => setShareModalOpen(true)}
               userRole={userRole}
-              collaborators={collaborators}
+              activeUsers={activeUsers}
             />
             {(userRole === "owner" || userRole === "editor") && (
               <MenuBar 
@@ -727,7 +808,7 @@ function TopHeader({
   onAskAI,
   onShare,
   userRole,
-  collaborators,
+  activeUsers,
 }: {
   user: any;
   title: string;
@@ -740,7 +821,7 @@ function TopHeader({
   onAskAI: () => void;
   onShare: () => void;
   userRole: Role | "unauthorized" | null;
-  collaborators: PermissionData[];
+  activeUsers: ActiveUser[];
 }) {
   const initials = (user.displayName || user.email || "U").trim().slice(0, 1).toUpperCase();
 
@@ -803,19 +884,23 @@ function TopHeader({
           
           <div className="mx-1 h-4 w-px bg-border-soft" />
           
-          {/* Collaborator Avatars */}
-          <div className="mr-2 flex -space-x-2">
-            {collaborators.slice(0, 4).map(c => (
-              <div key={c.userId} className="z-10 flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-violet-100 text-xs font-semibold text-violet-700 shadow-sm">
-                {c.avatar ? <img src={c.avatar} alt={c.name} className="h-full w-full object-cover" /> : getInitials(c.name || c.email)}
+          {/* Active Users (Presence) Avatars */}
+          {activeUsers.length > 0 && (
+            <div className="mr-2 flex items-center gap-2">
+              <div className="flex -space-x-2" title={`${activeUsers.length} collaborator${activeUsers.length > 1 ? 's' : ''} online`}>
+                {activeUsers.slice(0, 4).map(c => (
+                  <div key={c.id} className="z-10 flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-white text-xs font-semibold shadow-sm" style={{ backgroundColor: c.color + '40', color: c.color }}>
+                    {c.avatar ? <img src={c.avatar} alt={c.name} className="h-full w-full object-cover" /> : getInitials(c.name)}
+                  </div>
+                ))}
+                {activeUsers.length > 4 && (
+                  <div className="z-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-surface-muted text-[10px] font-semibold text-muted-foreground shadow-sm">
+                    +{activeUsers.length - 4}
+                  </div>
+                )}
               </div>
-            ))}
-            {collaborators.length > 4 && (
-              <div className="z-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-surface-muted text-[10px] font-semibold text-muted-foreground shadow-sm">
-                +{collaborators.length - 4}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
           <button onClick={onShare} className="ml-1 flex h-9 items-center gap-2 rounded-full bg-primary px-4 text-[13px] font-medium text-white shadow-[0_4px_12px_-4px_color-mix(in_oklab,var(--primary)_55%,transparent)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_92%,black)] active:scale-[0.98]">
             <Share2 size={14} strokeWidth={2} />
@@ -883,6 +968,10 @@ function TitleInput({ value, onChange }: { value: string; onChange: (v: string) 
 
 function SaveStatusPill({ status }: { status: SaveStatus }) {
   const isSaving = status === "saving";
+  const isOffline = status === "offline";
+  const isReconnecting = status === "reconnecting";
+  const isError = status === "error";
+
   return (
     <div className="ml-1 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] text-muted-foreground">
       <AnimatePresence mode="wait" initial={false}>
@@ -902,6 +991,39 @@ function SaveStatusPill({ status }: { status: SaveStatus }) {
             </motion.span>
             <span>Saving…</span>
           </motion.div>
+        ) : isOffline ? (
+          <motion.div
+            key="offline"
+            initial={{ opacity: 0, y: -2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 2 }}
+            className="flex items-center gap-1.5 text-amber-600/90"
+          >
+            <WifiOff size={13} strokeWidth={1.8} />
+            <span>Offline</span>
+          </motion.div>
+        ) : isReconnecting ? (
+          <motion.div
+            key="reconnecting"
+            initial={{ opacity: 0, y: -2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 2 }}
+            className="flex items-center gap-1.5 text-amber-600/90"
+          >
+            <RefreshCw size={13} strokeWidth={1.8} className="animate-spin" />
+            <span>Reconnecting…</span>
+          </motion.div>
+        ) : isError ? (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, y: -2 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 2 }}
+            className="flex items-center gap-1.5 text-red-600/90"
+          >
+            <AlertCircle size={13} strokeWidth={1.8} />
+            <span>Save error</span>
+          </motion.div>
         ) : (
           <motion.div
             key="saved"
@@ -919,6 +1041,7 @@ function SaveStatusPill({ status }: { status: SaveStatus }) {
     </div>
   );
 }
+
 
 function HeaderBtn({
   icon: Icon,

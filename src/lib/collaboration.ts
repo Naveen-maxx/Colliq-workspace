@@ -1,11 +1,10 @@
 /**
  * collaboration.ts
  *
- * Manages Yjs document and y-websocket provider lifecycle.
- * - Provider URL is fully configurable via VITE_YJS_SERVER_URL
- * - SSR-safe: WebsocketProvider is only created in browser environments
- * - Single provider instance per documentId (ref-counted)
- * - Offline-safe: editor stays editable when disconnected
+ * SSR-safe Yjs provider factory.
+ * - NEVER runs on the server (Node.js context)
+ * - Single Y.Doc + WebsocketProvider per documentId per browser session
+ * - Ref-counted so cleanup is safe when multiple mounts exist (e.g., React StrictMode)
  */
 
 import * as Y from 'yjs';
@@ -16,27 +15,34 @@ export interface CollabProvider {
   provider: WebsocketProvider | null;
 }
 
-interface ProviderCacheItem extends CollabProvider {
+interface CacheEntry extends CollabProvider {
   refCount: number;
 }
 
-const cache = new Map<string, ProviderCacheItem>();
+// Module-level cache — only ever populated in browser context
+const cache = new Map<string, CacheEntry>();
 
-const COLLAB_SERVER_URL = (() => {
-  // Must be set in .env as VITE_YJS_SERVER_URL
-  const url = typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_YJS_SERVER_URL;
-  if (!url || url === '') {
-    console.warn('[collab] VITE_YJS_SERVER_URL is not set. Using demo server for development.');
-    return 'wss://demos.yjs.dev/ws';
-  }
-  return url.trim();
-})();
+function getServerUrl(): string {
+  try {
+    const url = (import.meta as any).env?.VITE_YJS_SERVER_URL;
+    if (url && url.trim()) return url.trim();
+  } catch {}
+  return 'ws://localhost:1234';
+}
 
 /**
- * Get (or create) a shared Y.Doc + WebsocketProvider for a given document room.
- * The provider connects to `VITE_YJS_SERVER_URL` and uses the room name `colliq-{documentId}`.
+ * Get (or create) a cached Y.Doc + WebsocketProvider for a document.
+ * Returns { doc, provider: null } during SSR — never cached server-side.
  */
 export function getCollabProvider(documentId: string): CollabProvider {
+  // ── SSR guard ──────────────────────────────────────────────────────────────
+  // The server has no WebSocket or BroadcastChannel. Return a throwaway doc.
+  // This doc is NOT cached, so it doesn't leak between SSR requests.
+  if (typeof window === 'undefined') {
+    return { doc: new Y.Doc(), provider: null };
+  }
+
+  // ── Client: use cache ──────────────────────────────────────────────────────
   const existing = cache.get(documentId);
   if (existing) {
     existing.refCount += 1;
@@ -45,31 +51,31 @@ export function getCollabProvider(documentId: string): CollabProvider {
   }
 
   const doc = new Y.Doc();
-  let provider: WebsocketProvider | null = null;
+  const serverUrl = getServerUrl();
+  const roomName = `colliq-${documentId}`;
 
-  if (typeof window !== 'undefined') {
-    const roomName = `colliq-${documentId}`;
-    console.log(`[collab] Creating WebsocketProvider → server="${COLLAB_SERVER_URL}" room="${roomName}"`);
-    provider = new WebsocketProvider(COLLAB_SERVER_URL, roomName, doc);
-  }
+  console.log(`[collab] Creating provider → server="${serverUrl}" room="${roomName}"`);
+  const provider = new WebsocketProvider(serverUrl, roomName, doc);
 
   cache.set(documentId, { doc, provider, refCount: 1 });
   return { doc, provider };
 }
 
 /**
- * Decrement ref count. Destroys provider + doc when no more consumers.
+ * Decrement ref count. Destroys provider + doc when refCount reaches zero.
  */
 export function releaseCollabProvider(documentId: string): void {
-  const item = cache.get(documentId);
-  if (!item) return;
+  if (typeof window === 'undefined') return; // SSR: nothing to release
 
-  item.refCount -= 1;
-  console.log(`[collab] Released provider for "${documentId}" (refCount=${item.refCount})`);
+  const entry = cache.get(documentId);
+  if (!entry) return;
 
-  if (item.refCount <= 0) {
-    item.provider?.destroy();
-    item.doc.destroy();
+  entry.refCount -= 1;
+  console.log(`[collab] Released provider for "${documentId}" (refCount=${entry.refCount})`);
+
+  if (entry.refCount <= 0) {
+    entry.provider?.destroy();
+    entry.doc.destroy();
     cache.delete(documentId);
     console.log(`[collab] Destroyed provider for "${documentId}"`);
   }
