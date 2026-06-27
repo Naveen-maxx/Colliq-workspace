@@ -10,6 +10,7 @@ import {
 import { AuthProvider } from "@/contexts/AuthContext";
 import { CommandPalette } from "@/components/command-palette";
 import { Toaster } from "@/components/ui/sonner";
+import colliqLogo from "@/assets/landing/colliq-logo.png";
 
 import appCss from "../styles.css?url";
 
@@ -85,6 +86,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:site", content: "@Colliq" },
     ],
     links: [
+      {
+        rel: "icon",
+        type: "image/png",
+        href: colliqLogo,
+      },
       {
         rel: "stylesheet",
         href: appCss,

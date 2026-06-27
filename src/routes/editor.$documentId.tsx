@@ -44,6 +44,7 @@ import { AIPreviewCard } from "@/components/editor/ai-preview-card";
 import { OutlinePopover } from "@/components/editor/outline-popover";
 import { ShareModal, getInitials } from "@/components/editor/share-modal";
 import { getCollaborators, type PermissionData, type Role } from "@/firebase/firestore/sharing";
+import { logSharedDocumentAccess } from "@/firebase/firestore/shared_access";
 import { Lock } from "lucide-react";
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
@@ -370,6 +371,11 @@ function EditorPage() {
         setTitle(doc.title);
         setFavorite(doc.favorite);
         setAccessGranted(true); // Triggers Effect 2
+        // Log access so this document appears in Workspace "Shared with you"
+        const accessType = collab ? "invite" : "link";
+        logSharedDocumentAccess(user.uid, documentId, computedRole, accessType).catch(
+          (err) => console.warn("[shared_access] failed to log access", err)
+        );
       }
     }).catch(err => {
       console.error("[editor] failed to load document", err);

@@ -35,6 +35,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { logout } from "@/firebase/auth";
 import { createDocument, getRecentDocuments, deleteDocument, updateDocument, duplicateDocument } from "@/firebase/firestore/documents";
 import { getFavoriteDocuments, toggleFavorite } from "@/firebase/firestore/favorites";
+import { getSharedDocuments } from "@/firebase/firestore/shared_access";
 import { toast } from "sonner";
 import { TEMPLATES, TEMPLATE_TITLE_MAP } from "@/lib/templates";
 import {
@@ -78,12 +79,6 @@ const START_TEMPLATES = [
   { title: "Research Notes", icon: Microscope },
 ];
 
-const SHARED = [
-  { id: "mock-shared-1", title: "Partner Brief — Acme", edited: "Shared 1h ago", people: ["Acme team"], tint: "var(--accent-warm)" },
-  { id: "mock-shared-2", title: "Investor Update — May", edited: "Shared yesterday", people: ["Board"], tint: "var(--cursor-violet)" },
-  { id: "mock-shared-3", title: "Launch Checklist", edited: "Shared 2d ago", people: ["Marketing"], tint: "var(--cursor-pink)" },
-  { id: "mock-shared-4", title: "Customer Interviews", edited: "Shared 4d ago", people: ["Research"], tint: "var(--cursor-teal)" },
-];
 
 const TEMPLATE_CARDS = [
   { title: "Class Notes", icon: GraduationCap },
@@ -131,6 +126,7 @@ function WorkspacePage() {
   // Lifted doc state — shared between Main and Topbar search
   const [recentDocs, setRecentDocs] = useState<any[]>([]);
   const [favoriteDocs, setFavoriteDocs] = useState<any[]>([]);
+  const [sharedDocs, setSharedDocs] = useState<any[]>([]);
   const [isDocsLoading, setIsDocsLoading] = useState(true);
   const [docToDelete, setDocToDelete] = useState<Doc | null>(null);
   const [toastMessage, setToastMessage] = useState("");
@@ -146,9 +142,10 @@ function WorkspacePage() {
     if (!user) return;
 
     const fetchAll = async () => {
-      const [recent, favs] = await Promise.all([
+      const [recent, favs, shared] = await Promise.all([
         getRecentDocuments(user.uid),
         getFavoriteDocuments(user.uid),
+        getSharedDocuments(user.uid),
       ]);
       setRecentDocs(
         recent.map((d) => ({
@@ -169,6 +166,16 @@ function WorkspacePage() {
           tint: "var(--cursor-blue)",
           updatedAt: d.updatedAt,
           content: d.content,
+        }))
+      );
+      setSharedDocs(
+        shared.map((d) => ({
+          id: d.id,
+          title: d.title,
+          edited: formatRelativeTime(d.updatedAt),
+          people: [d.ownerName, capitalize(d.accessRole)],
+          tint: "var(--cursor-teal)",
+          content: null, // don't preview shared doc content (privacy + perf)
         }))
       );
       setIsDocsLoading(false);
@@ -299,13 +306,12 @@ function WorkspacePage() {
             id="shared"
             eyebrow="From your team"
             title="Shared with you"
-            items={SHARED}
-            loading={false}
+            items={sharedDocs}
+            loading={isDocsLoading}
             compact
-            onDeleteRequest={setDocToDelete}
             emptyIcon={Users}
-            emptyTitle="Nothing shared yet"
-            emptyMessage="Documents shared with you will appear here."
+            emptyTitle="No shared documents yet"
+            emptyMessage="Documents shared with you by teammates will appear here once you open them."
           />
           <TemplatesSection />
 
@@ -1133,4 +1139,9 @@ function formatRelativeTime(timestamp: any): string {
   const weeks = Math.floor(days / 7);
   if (weeks < 4) return `${weeks}w ago`;
   return new Date(timestamp.toMillis()).toLocaleDateString();
+}
+
+function capitalize(s: string): string {
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

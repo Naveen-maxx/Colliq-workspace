@@ -1,6 +1,7 @@
 import { collection, doc, setDoc, getDocs, deleteDoc, updateDoc, query, where, serverTimestamp, getDoc } from "firebase/firestore";
 import { db } from "../config";
 import { updateDocument } from "./documents";
+import { removeSharedDocumentAccess } from "./shared_access";
 
 export type Role = "owner" | "editor" | "commenter" | "viewer";
 
@@ -91,11 +92,13 @@ export async function addCollaboratorByEmail(documentId: string, rawEmail: strin
 }
 
 /**
- * Remove a collaborator
+ * Remove a collaborator and clean up their shared_access log entry.
  */
 export async function removeCollaborator(documentId: string, userId: string): Promise<void> {
   const permissionRef = doc(db, "document_permissions", documentId, "users", userId);
   await deleteDoc(permissionRef);
+  // Also remove the Workspace "Shared with you" entry for immediate revocation
+  await removeSharedDocumentAccess(userId, documentId);
 }
 
 /**

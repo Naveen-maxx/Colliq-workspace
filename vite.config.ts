@@ -5,6 +5,9 @@ import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
+  server: {
+    allowedHosts: true,
+  },
   plugins: [tailwindcss(), tsconfigPaths(), tanstackStart(), react()],
   // Ensure Yjs and y-websocket are treated as client-only packages.
   // They use browser APIs (WebSocket, BroadcastChannel) that don't exist in Node.js.
