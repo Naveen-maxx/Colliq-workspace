@@ -75,5 +75,5 @@ export const askAi = createServerFn({ method: "POST" })
     });
 
     return { response };
-  },
+  }
 );

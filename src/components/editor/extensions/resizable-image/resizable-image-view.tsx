@@ -3,8 +3,10 @@ import { useState, useRef, useEffect, MouseEvent as ReactMouseEvent } from "reac
 import { AlignLeft, AlignCenter, AlignRight, Maximize, Loader2, RotateCw, Crop, Trash2, Check, X } from "lucide-react";
 import { toast } from "sonner";
 
-export function ResizableImageView({ node, updateAttributes, selected, deleteNode }: NodeViewProps) {
+export function ResizableImageView({ node, updateAttributes, selected, deleteNode, editor }: NodeViewProps) {
   const { src, originalSrc, width, align, caption, loading, rotate, crop } = node.attrs;
+  
+  const isEditable = editor.isEditable;
   
   const [isResizing, setIsResizing] = useState(false);
   const [resizeDirection, setResizeDirection] = useState<"nw" | "ne" | "sw" | "se" | null>(null);
@@ -165,7 +167,7 @@ export function ResizableImageView({ node, updateAttributes, selected, deleteNod
       data-drag-handle
     >
       {/* ALIGNMENT TOOLBAR (Shows on hover/select) */}
-      {!isCropping && (
+      {!isCropping && isEditable && (
         <div
           className={`absolute -top-10 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border-soft bg-white p-1 shadow-md transition-opacity ${
             selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
@@ -281,7 +283,7 @@ export function ResizableImageView({ node, updateAttributes, selected, deleteNod
             )}
             
             {/* 4-CORNER RESIZE HANDLES */}
-            {!loading && selected && !isCropping && align !== "full" && (
+            {!loading && selected && !isCropping && align !== "full" && isEditable && (
               <>
                 <div
                   className="absolute -top-1.5 -left-1.5 z-10 h-3.5 w-3.5 cursor-nwse-resize rounded-full bg-white border border-border-soft shadow-sm ring-1 ring-black/5 opacity-0 transition-opacity hover:opacity-100 group-hover:opacity-100"

@@ -34,7 +34,7 @@ function getServerUrl(): string {
  * Get (or create) a cached Y.Doc + WebsocketProvider for a document.
  * Returns { doc, provider: null } during SSR — never cached server-side.
  */
-export function getCollabProvider(documentId: string): CollabProvider {
+export function getCollabProvider(documentId: string, connect: boolean = true): CollabProvider {
   // ── SSR guard ──────────────────────────────────────────────────────────────
   // The server has no WebSocket or BroadcastChannel. Return a throwaway doc.
   // This doc is NOT cached, so it doesn't leak between SSR requests.
@@ -55,7 +55,7 @@ export function getCollabProvider(documentId: string): CollabProvider {
   const roomName = `colliq-${documentId}`;
 
   console.log(`[collab] Creating provider → server="${serverUrl}" room="${roomName}"`);
-  const provider = new WebsocketProvider(serverUrl, roomName, doc);
+  const provider = new WebsocketProvider(serverUrl, roomName, doc, { connect });
 
   cache.set(documentId, { doc, provider, refCount: 1 });
   return { doc, provider };

@@ -203,3 +203,8 @@
   user-select: none;
   white-space: nowrap;
 }
+
+.collaboration-cursor__selection {
+  pointer-events: none;
+  /* background-color is set dynamically inline */
+}

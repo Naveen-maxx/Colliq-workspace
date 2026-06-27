@@ -222,7 +222,8 @@ function EditorPage() {
 
   // --- Yjs collaboration setup ---
   // useMemo is SSR-safe now: collaboration.ts returns a non-cached doc on the server.
-  const { doc: ydoc, provider } = useMemo(() => getCollabProvider(documentId), [documentId]);
+  // We pass `false` to initially NOT connect, until user role is confirmed.
+  const { doc: ydoc, provider } = useMemo(() => getCollabProvider(documentId, false), [documentId]);
 
   // Tracks whether this user has been granted access (role resolved from Firestore)
   const [accessGranted, setAccessGranted] = useState(false);
@@ -252,6 +253,12 @@ function EditorPage() {
               return colors[charCodeSum % colors.length];
             })(),
           },
+          selectionRender: (user) => {
+            return {
+              class: 'collaboration-cursor__selection',
+              style: `background-color: ${user.color}40`,
+            };
+          }
         })
       ] : []),
       Underline,
@@ -510,7 +517,12 @@ function EditorPage() {
     if (editorReady && editor && userRole !== "unauthorized") {
       editor.setEditable(userRole === "owner" || userRole === "editor");
     }
-  }, [editorReady, editor, userRole]);
+    
+    // Connect WebSocket if authorized
+    if (provider && userRole && userRole !== "unauthorized") {
+      provider.connect();
+    }
+  }, [editorReady, editor, userRole, provider]);
 
   // ── Apply margin/padding to editor ───────────────────────────────────────
   useEffect(() => {
@@ -729,7 +741,7 @@ function EditorPage() {
         customMargins={customMargins}
       >
         <EditorContent editor={editor} />
-        {editor && (
+        {editor && userRole !== "viewer" && userRole !== "commenter" && (
           <TextFormattingToolbar 
             editor={editor} 
             onOpenAI={() => {
@@ -747,8 +759,8 @@ function EditorPage() {
             }} 
           />
         )}
-        {editor && <LinkBubbleMenu editor={editor} />}
-        {editor && <TableBubbleMenu editor={editor} />}
+        {editor && userRole !== "viewer" && userRole !== "commenter" && <LinkBubbleMenu editor={editor} />}
+        {editor && userRole !== "viewer" && userRole !== "commenter" && <TableBubbleMenu editor={editor} />}
       </DocumentCanvas>
 
       <ConfirmDialog
@@ -771,7 +783,7 @@ function EditorPage() {
 
       {/* ── Floating Ask AI Button ────────────────────────────────── */}
       <AnimatePresence>
-        {!isAskAIOpen && (
+        {!isAskAIOpen && userRole !== "viewer" && userRole !== "commenter" && (
           <motion.button
             key="ask-ai-fab"
             initial={{ scale: 0, opacity: 0 }}
@@ -880,7 +892,9 @@ function TopHeader({
 
           <HeaderBtn icon={History} label="Version history" onClick={onVersionHistory} />
           <HeaderBtn icon={MessageSquare} label="Comments" />
-          <HeaderBtn icon={Sparkles} label="Ask AI" highlighted onClick={onAskAI} />
+          {userRole !== "viewer" && userRole !== "commenter" && (
+            <HeaderBtn icon={Sparkles} label="Ask AI" highlighted onClick={onAskAI} />
+          )}
           
           <div className="mx-1 h-4 w-px bg-border-soft" />
           
