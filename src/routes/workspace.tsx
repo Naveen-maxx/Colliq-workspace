@@ -30,6 +30,7 @@ import {
   ArrowUpDown,
   Check,
   X,
+  Menu,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { logout } from "@/firebase/auth";
@@ -252,6 +253,8 @@ function WorkspacePage() {
     }
   };
 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   if (loading || !user) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
@@ -264,14 +267,16 @@ function WorkspacePage() {
     <div className="min-h-screen bg-[#FAFAFA] text-foreground">
       <Sidebar
         user={user}
+        mobileOpen={mobileMenuOpen}
+        onCloseMobile={() => setMobileMenuOpen(false)}
         onLogout={async () => {
           await logout();
           navigate({ to: "/" });
         }}
       />
       <div className="md:pl-[72px]">
-        <Topbar searchableDocs={searchableDocs} />
-        <main className="mx-auto max-w-6xl px-6 pb-32 pt-10 sm:px-8">
+        <Topbar searchableDocs={searchableDocs} onMenuClick={() => setMobileMenuOpen(true)} />
+        <main className="mx-auto max-w-6xl px-4 pb-32 pt-10 sm:px-8">
           <StartSection />
           <DocsSection
             id="recent"
@@ -346,9 +351,13 @@ function WorkspacePage() {
 function Sidebar({
   user,
   onLogout,
+  mobileOpen,
+  onCloseMobile,
 }: {
   user: { displayName?: string | null; email?: string | null; photoURL?: string | null };
   onLogout: () => void;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -364,36 +373,60 @@ function Sidebar({
     setActive(id);
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (onCloseMobile) onCloseMobile();
   };
 
   return (
-    <motion.aside
-      onHoverStart={() => setExpanded(true)}
-      onHoverEnd={() => {
-        setExpanded(false);
-        setMenuOpen(false);
-      }}
-      animate={{ width: expanded ? 232 : 72 }}
-      transition={{ type: "spring", stiffness: 320, damping: 32 }}
-      className="fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-border-soft bg-white/70 backdrop-blur-xl md:flex"
-    >
-      {/* Logo */}
-      <Link to="/" className="flex h-[68px] items-center gap-2.5 px-4">
-        <img src={colliqLogo} alt="Colliq" className="h-9 w-9 shrink-0 object-contain" />
-        <AnimatePresence>
-          {expanded && (
-            <motion.span
-              initial={{ opacity: 0, x: -4 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -4 }}
-              transition={{ duration: 0.18 }}
-              className="font-display text-[17px] font-semibold tracking-tight whitespace-nowrap"
-            >
-              Colliq
-            </motion.span>
+    <>
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onCloseMobile}
+            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm md:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      <motion.aside
+        onHoverStart={() => setExpanded(true)}
+        onHoverEnd={() => {
+          setExpanded(false);
+          setMenuOpen(false);
+        }}
+        initial={false}
+        animate={{ width: mobileOpen ? 260 : expanded ? 232 : 72, x: mobileOpen ? 0 : 0 }}
+        transition={{ type: "spring", stiffness: 320, damping: 32 }}
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border-soft bg-white/95 backdrop-blur-xl transition-transform duration-300 md:translate-x-0 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        } md:flex`}
+      >
+        {/* Logo */}
+        <div className="flex h-[68px] items-center gap-2.5 px-4 justify-between">
+          <Link to="/" onClick={onCloseMobile} className="flex items-center gap-2.5">
+            <img src={colliqLogo} alt="Colliq" className="h-9 w-9 shrink-0 object-contain" />
+            <AnimatePresence>
+              {(expanded || mobileOpen) && (
+                <motion.span
+                  initial={{ opacity: 0, x: -4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -4 }}
+                  transition={{ duration: 0.18 }}
+                  className="font-display text-[17px] font-semibold tracking-tight whitespace-nowrap"
+                >
+                  Colliq
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </Link>
+          {mobileOpen && (
+            <button onClick={onCloseMobile} className="md:hidden text-muted-foreground hover:text-foreground p-1">
+              <X size={20} />
+            </button>
           )}
-        </AnimatePresence>
-      </Link>
+        </div>
 
       {/* Nav */}
       <nav className="mt-2 flex flex-1 flex-col gap-1 px-2">
@@ -419,7 +452,7 @@ function Sidebar({
               )}
               <Icon size={18} strokeWidth={1.6} className="shrink-0" />
               <AnimatePresence>
-                {expanded && (
+                {(expanded || mobileOpen) && (
                   <motion.span
                     initial={{ opacity: 0, x: -4 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -450,7 +483,7 @@ function Sidebar({
             )}
           </div>
           <AnimatePresence>
-            {expanded && (
+            {(expanded || mobileOpen) && (
               <motion.div
                 initial={{ opacity: 0, x: -4 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -482,6 +515,7 @@ function Sidebar({
         </AnimatePresence>
       </div>
     </motion.aside>
+    </>
   );
 }
 
@@ -515,10 +549,24 @@ function SidebarMenuItem({
    TOPBAR
 ================================================================ */
 
-function Topbar({ searchableDocs }: { searchableDocs: SearchableDoc[] }) {
+function Topbar({
+  searchableDocs,
+  onMenuClick,
+}: {
+  searchableDocs: SearchableDoc[];
+  onMenuClick?: () => void;
+}) {
   return (
     <header className="sticky top-0 z-30 border-b border-border-soft/70 bg-[#FAFAFA]/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-[68px] max-w-6xl items-center px-6">
+      <div className="mx-auto flex h-[68px] max-w-6xl items-center gap-3 px-4 sm:px-6">
+        {onMenuClick && (
+          <button
+            onClick={onMenuClick}
+            className="md:hidden flex shrink-0 items-center justify-center rounded-full p-2 text-foreground/70 hover:bg-surface-muted"
+          >
+            <Menu size={20} />
+          </button>
+        )}
         <SearchOverlay documents={searchableDocs} />
       </div>
     </header>
@@ -550,7 +598,7 @@ function StartSection() {
         </h1>
       </motion.div>
 
-      <div className="mt-7 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mt-7 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
         {START_TEMPLATES.map((t, i) => (
           <StartCard key={t.title} index={i} {...t} />
         ))}
@@ -750,7 +798,7 @@ function DocsSection({
       {loading ? (
         <div
           className={`grid gap-4 ${
-            compact ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+            compact ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
           }`}
         >
           {Array.from({ length: compact ? 4 : 3 }).map((_, i) => (
@@ -772,7 +820,7 @@ function DocsSection({
       ) : (
         <div
           className={`grid gap-4 ${
-            compact ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+            compact ? "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
           }`}
         >
           {sortedItems.map((d, i) => (
@@ -989,7 +1037,7 @@ function TemplatesSection() {
         </p>
         <h2 className="font-display text-[22px] font-semibold tracking-tight">Templates</h2>
       </div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
         {TEMPLATE_CARDS.map((t, i) => (
           <TemplateCard key={t.title} index={i} {...t} />
         ))}

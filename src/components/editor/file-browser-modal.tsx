@@ -92,7 +92,7 @@ export function FileBrowserModal({ isOpen, onClose }: { isOpen: boolean; onClose
               </div>
 
               {/* Tabs */}
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1">
                 <TabButton active={activeTab === "recents"} onClick={() => setActiveTab("recents")} icon={Clock} label="Recents" />
                 <TabButton active={activeTab === "favorites"} onClick={() => setActiveTab("favorites")} icon={Star} label="Favorites" />
                 <TabButton active={activeTab === "shared"} onClick={() => setActiveTab("shared")} icon={Users} label="Shared" />

@@ -197,13 +197,13 @@ export function ShareModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 backdrop-blur-sm p-4 sm:p-0" onClick={onClose}>
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="relative flex w-full max-w-[500px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="relative flex w-full max-h-[95vh] sm:max-h-none sm:max-w-[500px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
@@ -216,7 +216,7 @@ export function ShareModal({
         <div className="p-5">
           {/* Invite Section */}
           <div className="mb-6">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <input
                 type="email"
                 placeholder="Add people via email..."
@@ -224,21 +224,25 @@ export function ShareModal({
                 onChange={e => setInviteEmail(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleInvite()}
                 disabled={!isOwner}
-                className="flex-1 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm outline-none transition-colors focus:border-primary disabled:opacity-60"
+                className="w-full sm:w-auto sm:flex-1 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm outline-none transition-colors focus:border-primary disabled:opacity-60"
               />
-              <RoleDropdown
-                value={inviteRole}
-                onChange={setInviteRole}
-                disabled={!isOwner}
-                options={["editor", "commenter", "viewer"]}
-              />
-              <button
-                onClick={handleInvite}
-                disabled={!isOwner || !inviteEmail.trim() || inviting}
-                className="flex h-[42px] items-center justify-center rounded-xl bg-primary px-4 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {inviting ? <Loader2 size={16} className="animate-spin" /> : "Invite"}
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 sm:flex-none flex justify-end">
+                  <RoleDropdown
+                    value={inviteRole}
+                    onChange={setInviteRole}
+                    disabled={!isOwner}
+                    options={["editor", "commenter", "viewer"]}
+                  />
+                </div>
+                <button
+                  onClick={handleInvite}
+                  disabled={!isOwner || !inviteEmail.trim() || inviting}
+                  className="flex h-[42px] shrink-0 items-center justify-center rounded-xl bg-primary px-4 font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {inviting ? <Loader2 size={16} className="animate-spin" /> : "Invite"}
+                </button>
+              </div>
             </div>
 
             {inviteError && (
@@ -267,7 +271,7 @@ export function ShareModal({
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             People with access
           </div>
-          <div className="mb-6 flex flex-col gap-1 max-h-[180px] overflow-y-auto">
+          <div className="mb-6 flex flex-col gap-1 max-h-[180px] overflow-y-auto no-scrollbar">
             {/* Owner Row */}
             <div className="flex items-center justify-between rounded-lg p-2 hover:bg-surface-muted/50 transition-colors">
               <div className="flex items-center gap-3">
@@ -325,9 +329,9 @@ export function ShareModal({
           <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             General access
           </div>
-          <div className="flex items-start justify-between rounded-xl bg-surface-muted/30 p-3">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 rounded-xl bg-surface-muted/30 p-3">
             <div className="flex items-start gap-3">
-              <div className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-full ${shareMode === "anyone_with_link" ? "bg-green-100 text-green-700" : "bg-surface-muted text-muted-foreground"}`}>
+              <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${shareMode === "anyone_with_link" ? "bg-green-100 text-green-700" : "bg-surface-muted text-muted-foreground"}`}>
                 {shareMode === "anyone_with_link" ? <Globe size={18} /> : <Lock size={18} />}
               </div>
               <div className="flex flex-col gap-1">
@@ -335,7 +339,7 @@ export function ShareModal({
                   <select
                     value={shareMode}
                     onChange={(e) => handleLinkModeChange(e.target.value as "restricted" | "anyone_with_link")}
-                    className="bg-transparent text-sm font-medium text-foreground outline-none cursor-pointer"
+                    className="bg-transparent text-sm font-medium text-foreground outline-none cursor-pointer max-w-[200px]"
                   >
                     <option value="restricted">Restricted</option>
                     <option value="anyone_with_link">Anyone with the link</option>
@@ -355,15 +359,17 @@ export function ShareModal({
             </div>
             
             {shareMode === "anyone_with_link" && (
-              isOwner ? (
-                <RoleDropdown
-                  value={linkRole}
-                  onChange={handleLinkRoleChange}
-                  options={["editor", "commenter", "viewer"]}
-                />
-              ) : (
-                <span className="text-sm text-muted-foreground px-2 pt-1">{ROLE_LABELS[linkRole]}</span>
-              )
+              <div className="flex justify-end sm:block mt-2 sm:mt-0">
+                {isOwner ? (
+                  <RoleDropdown
+                    value={linkRole}
+                    onChange={handleLinkRoleChange}
+                    options={["editor", "commenter", "viewer"]}
+                  />
+                ) : (
+                  <span className="text-sm text-muted-foreground px-2 pt-1">{ROLE_LABELS[linkRole]}</span>
+                )}
+              </div>
             )}
           </div>
         </div>

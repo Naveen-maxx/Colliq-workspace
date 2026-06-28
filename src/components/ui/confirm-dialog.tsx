@@ -70,7 +70,7 @@ export function ConfirmDialog({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 8 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="fixed left-1/2 top-1/2 z-[9999] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border-soft bg-white p-6 shadow-[0_24px_60px_-12px_rgba(40,40,90,0.25)]"
+            className="fixed left-1/2 top-1/2 z-[9999] w-[90vw] max-w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border-soft bg-white p-6 shadow-[0_24px_60px_-12px_rgba(40,40,90,0.25)]"
           >
             {/* Close button */}
             <button

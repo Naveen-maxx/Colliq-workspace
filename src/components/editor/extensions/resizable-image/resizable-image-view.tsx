@@ -1,5 +1,5 @@
 import { NodeViewWrapper, NodeViewProps } from "@tiptap/react";
-import { useState, useRef, useEffect, MouseEvent as ReactMouseEvent } from "react";
+import { useState, useRef, useEffect, MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from "react";
 import { AlignLeft, AlignCenter, AlignRight, Maximize, Loader2, RotateCw, Crop, Trash2, Check, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -27,22 +27,29 @@ export function ResizableImageView({ node, updateAttributes, selected, deleteNod
   }, [src, originalSrc, loading, updateAttributes]);
 
   // --- RESIZE LOGIC ---
-  const handleResizeStart = (e: ReactMouseEvent<HTMLDivElement>, dir: "nw" | "ne" | "sw" | "se") => {
-    e.preventDefault();
+  const handleResizeStart = (e: ReactMouseEvent<HTMLDivElement> | ReactTouchEvent<HTMLDivElement>, dir: "nw" | "ne" | "sw" | "se") => {
+    // If it's a touch event, we don't want to preventDefault as it might block scrolling if we don't handle it carefully, 
+    // but for resize we do want to prevent default to stop scrolling while resizing.
+    if ('touches' in e && e.cancelable) e.preventDefault();
+    else if (!('touches' in e)) e.preventDefault();
+    
     if (!containerRef.current) return;
     setIsResizing(true);
     setResizeDirection(dir);
-    setStartDrag({ x: e.clientX, w: containerRef.current.offsetWidth });
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as ReactMouseEvent).clientX;
+    setStartDrag({ x: clientX, w: containerRef.current.offsetWidth });
   };
 
   useEffect(() => {
     if (!isResizing || !resizeDirection) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMouseMove = (e: MouseEvent | TouchEvent) => {
       if (!containerRef.current || !containerRef.current.parentElement) return;
       const parentWidth = containerRef.current.parentElement.offsetWidth || 800;
       
-      const deltaX = e.clientX - startDrag.x;
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+      const deltaX = clientX - startDrag.x;
       // If pulling left handle, moving left (negative delta) increases width
       // If pulling right handle, moving right (positive delta) increases width
       const isLeft = resizeDirection === "nw" || resizeDirection === "sw";
@@ -60,15 +67,20 @@ export function ResizableImageView({ node, updateAttributes, selected, deleteNod
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("touchmove", handleMouseMove, { passive: false });
+    document.addEventListener("touchend", handleMouseUp);
     return () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("touchmove", handleMouseMove);
+      document.removeEventListener("touchend", handleMouseUp);
     };
   }, [isResizing, resizeDirection, startDrag, updateAttributes]);
 
   // --- CROP LOGIC ---
-  const handleCropStart = (e: ReactMouseEvent<HTMLDivElement>, action: "move" | "nw" | "ne" | "sw" | "se") => {
-    e.preventDefault();
+  const handleCropStart = (e: ReactMouseEvent<HTMLDivElement> | ReactTouchEvent<HTMLDivElement>, action: "move" | "nw" | "ne" | "sw" | "se") => {
+    if ('touches' in e && e.cancelable) e.preventDefault();
+    else if (!('touches' in e)) e.preventDefault();
     e.stopPropagation();
     setCropDragging(action);
   };
@@ -76,11 +88,14 @@ export function ResizableImageView({ node, updateAttributes, selected, deleteNod
   useEffect(() => {
     if (!cropDragging) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMouseMove = (e: MouseEvent | TouchEvent) => {
       if (!imageRef.current) return;
       const rect = imageRef.current.getBoundingClientRect();
-      const xPercent = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-      const yPercent = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+      
+      const xPercent = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+      const yPercent = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100));
 
       setCropBox((prev: any) => {
         let newBox = { ...prev };
@@ -118,9 +133,13 @@ export function ResizableImageView({ node, updateAttributes, selected, deleteNod
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("touchmove", handleMouseMove, { passive: false });
+    document.addEventListener("touchend", handleMouseUp);
     return () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("touchmove", handleMouseMove);
+      document.removeEventListener("touchend", handleMouseUp);
     };
   }, [cropDragging]);
 
@@ -169,7 +188,7 @@ export function ResizableImageView({ node, updateAttributes, selected, deleteNod
       {/* ALIGNMENT TOOLBAR (Shows on hover/select) */}
       {!isCropping && isEditable && (
         <div
-          className={`absolute -top-10 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border-soft bg-white p-1 shadow-md transition-opacity ${
+          className={`absolute -top-10 left-1/2 flex -translate-x-1/2 w-max max-w-[90vw] overflow-x-auto no-scrollbar items-center gap-1 rounded-lg border border-border-soft bg-white p-1 shadow-md transition-opacity ${
             selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           } z-10`}
         >
@@ -264,10 +283,10 @@ export function ResizableImageView({ node, updateAttributes, selected, deleteNod
                   onMouseDown={(e) => handleCropStart(e, "move")}
                 >
                   {/* Crop Handles */}
-                  <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-black/20 cursor-nwse-resize rounded-sm" onMouseDown={(e) => handleCropStart(e, "nw")} />
-                  <div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-black/20 cursor-nesw-resize rounded-sm" onMouseDown={(e) => handleCropStart(e, "ne")} />
-                  <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-black/20 cursor-nesw-resize rounded-sm" onMouseDown={(e) => handleCropStart(e, "sw")} />
-                  <div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-black/20 cursor-nwse-resize rounded-sm" onMouseDown={(e) => handleCropStart(e, "se")} />
+                  <div className="absolute -top-1.5 -left-1.5 w-4 h-4 sm:w-3 sm:h-3 bg-white border border-black/20 cursor-nwse-resize rounded-sm" onMouseDown={(e) => handleCropStart(e, "nw")} onTouchStart={(e) => handleCropStart(e, "nw")} />
+                  <div className="absolute -top-1.5 -right-1.5 w-4 h-4 sm:w-3 sm:h-3 bg-white border border-black/20 cursor-nesw-resize rounded-sm" onMouseDown={(e) => handleCropStart(e, "ne")} onTouchStart={(e) => handleCropStart(e, "ne")} />
+                  <div className="absolute -bottom-1.5 -left-1.5 w-4 h-4 sm:w-3 sm:h-3 bg-white border border-black/20 cursor-nesw-resize rounded-sm" onMouseDown={(e) => handleCropStart(e, "sw")} onTouchStart={(e) => handleCropStart(e, "sw")} />
+                  <div className="absolute -bottom-1.5 -right-1.5 w-4 h-4 sm:w-3 sm:h-3 bg-white border border-black/20 cursor-nwse-resize rounded-sm" onMouseDown={(e) => handleCropStart(e, "se")} onTouchStart={(e) => handleCropStart(e, "se")} />
                 </div>
                 
                 {/* Crop Actions */}
@@ -286,20 +305,24 @@ export function ResizableImageView({ node, updateAttributes, selected, deleteNod
             {!loading && selected && !isCropping && align !== "full" && isEditable && (
               <>
                 <div
-                  className="absolute -top-1.5 -left-1.5 z-10 h-3.5 w-3.5 cursor-nwse-resize rounded-full bg-white border border-border-soft shadow-sm ring-1 ring-black/5 opacity-0 transition-opacity hover:opacity-100 group-hover:opacity-100"
+                  className={`absolute -top-1.5 -left-1.5 z-10 h-5 w-5 sm:h-3.5 sm:w-3.5 cursor-nwse-resize rounded-full bg-white border border-border-soft shadow-sm ring-1 ring-black/5 transition-opacity ${selected ? "opacity-100" : "opacity-0 hover:opacity-100 group-hover:opacity-100"}`}
                   onMouseDown={(e) => handleResizeStart(e, "nw")}
+                  onTouchStart={(e) => handleResizeStart(e, "nw")}
                 />
                 <div
-                  className="absolute -top-1.5 -right-1.5 z-10 h-3.5 w-3.5 cursor-nesw-resize rounded-full bg-white border border-border-soft shadow-sm ring-1 ring-black/5 opacity-0 transition-opacity hover:opacity-100 group-hover:opacity-100"
+                  className={`absolute -top-1.5 -right-1.5 z-10 h-5 w-5 sm:h-3.5 sm:w-3.5 cursor-nesw-resize rounded-full bg-white border border-border-soft shadow-sm ring-1 ring-black/5 transition-opacity ${selected ? "opacity-100" : "opacity-0 hover:opacity-100 group-hover:opacity-100"}`}
                   onMouseDown={(e) => handleResizeStart(e, "ne")}
+                  onTouchStart={(e) => handleResizeStart(e, "ne")}
                 />
                 <div
-                  className="absolute -bottom-1.5 -left-1.5 z-10 h-3.5 w-3.5 cursor-nesw-resize rounded-full bg-white border border-border-soft shadow-sm ring-1 ring-black/5 opacity-0 transition-opacity hover:opacity-100 group-hover:opacity-100"
+                  className={`absolute -bottom-1.5 -left-1.5 z-10 h-5 w-5 sm:h-3.5 sm:w-3.5 cursor-nesw-resize rounded-full bg-white border border-border-soft shadow-sm ring-1 ring-black/5 transition-opacity ${selected ? "opacity-100" : "opacity-0 hover:opacity-100 group-hover:opacity-100"}`}
                   onMouseDown={(e) => handleResizeStart(e, "sw")}
+                  onTouchStart={(e) => handleResizeStart(e, "sw")}
                 />
                 <div
-                  className="absolute -bottom-1.5 -right-1.5 z-10 h-3.5 w-3.5 cursor-nwse-resize rounded-full bg-white border border-border-soft shadow-sm ring-1 ring-black/5 opacity-0 transition-opacity hover:opacity-100 group-hover:opacity-100"
+                  className={`absolute -bottom-1.5 -right-1.5 z-10 h-5 w-5 sm:h-3.5 sm:w-3.5 cursor-nwse-resize rounded-full bg-white border border-border-soft shadow-sm ring-1 ring-black/5 transition-opacity ${selected ? "opacity-100" : "opacity-0 hover:opacity-100 group-hover:opacity-100"}`}
                   onMouseDown={(e) => handleResizeStart(e, "se")}
+                  onTouchStart={(e) => handleResizeStart(e, "se")}
                 />
               </>
             )}

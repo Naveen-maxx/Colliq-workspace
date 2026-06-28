@@ -32,7 +32,7 @@ const ACTIONS = [
 ];
 
 export function SelectionAIOverlay({ editor, isOpen, snapshot, onClose }: SelectionAIOverlayProps) {
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number; width?: number } | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [suggestion, setSuggestion] = useState("");
   const [currentAction, setCurrentAction] = useState<typeof ACTIONS[0] | null>(null);
@@ -43,10 +43,18 @@ export function SelectionAIOverlay({ editor, isOpen, snapshot, onClose }: Select
     if (isOpen && snapshot && editor) {
       try {
         const endCoords = editor.view.coordsAtPos(snapshot.to);
+        const isMobile = typeof window !== 'undefined' ? window.innerWidth < 640 : false;
+        
         // Position slightly below the end of the selection
         setCoords({
           top: endCoords.bottom + window.scrollY + 10,
-          left: Math.max(20, endCoords.left + window.scrollX - 150) // center somewhat
+          left: isMobile 
+            ? 12 
+            : Math.min(
+                Math.max(20, endCoords.left + window.scrollX - 150),
+                window.innerWidth - 470 // 450px width + 20px padding
+              ),
+          width: isMobile ? window.innerWidth - 24 : undefined
         });
       } catch (e) {
         // Fallback if coordsAtPos fails (e.g. node deleted)
@@ -145,7 +153,7 @@ export function SelectionAIOverlay({ editor, isOpen, snapshot, onClose }: Select
   const renderContent = () => {
     if (status === "idle") {
       return (
-        <div className="flex w-48 flex-col py-1">
+        <div className="flex w-full sm:w-48 flex-col py-1">
           {ACTIONS.map((action) => (
             <button
               key={action.label}
@@ -162,7 +170,7 @@ export function SelectionAIOverlay({ editor, isOpen, snapshot, onClose }: Select
 
     if (status === "loading") {
       return (
-        <div className="flex w-56 items-center gap-3 px-4 py-3.5">
+        <div className="flex w-full sm:w-56 items-center gap-3 px-4 py-3.5">
           <Loader2 size={16} className="animate-spin text-primary" />
           <span className="text-[13px] font-medium text-foreground/80">
             {currentAction?.label === "Fix Grammar" ? "Fixing grammar..." : "Improving writing..."}
@@ -173,7 +181,7 @@ export function SelectionAIOverlay({ editor, isOpen, snapshot, onClose }: Select
 
     if (status === "success") {
       return (
-        <div className="flex w-[450px] flex-col overflow-hidden">
+        <div className="flex w-full sm:w-[450px] flex-col overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border/50 bg-black/5 px-4 py-2.5">
             <div className="flex items-center gap-2">
@@ -202,31 +210,31 @@ export function SelectionAIOverlay({ editor, isOpen, snapshot, onClose }: Select
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-between border-t border-border/50 bg-black/5 px-4 py-3">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border/50 bg-black/5 px-4 py-3">
             <button
               onClick={onClose}
-              className="rounded-md px-3 py-1.5 text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground"
+              className="w-full sm:w-auto rounded-md px-3 py-1.5 text-[12.5px] font-medium text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground"
             >
               Cancel
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap sm:flex-nowrap items-center justify-end gap-2 w-full sm:w-auto">
               <button
                 onClick={handleTryAgain}
-                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-medium text-foreground/80 transition-colors hover:bg-black/5"
+                className="flex flex-1 sm:flex-none justify-center items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-medium text-foreground/80 transition-colors hover:bg-black/5"
               >
                 <RefreshCw size={12} />
-                Try Again
+                <span className="hidden sm:inline">Try Again</span>
               </button>
               <button
                 onClick={handleInsertBelow}
-                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-medium text-foreground/80 transition-colors hover:bg-black/5"
+                className="flex flex-1 sm:flex-none justify-center items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-medium text-foreground/80 transition-colors hover:bg-black/5"
               >
                 <ArrowDownToLine size={12} />
-                Insert Below
+                <span className="hidden sm:inline">Insert Below</span>
               </button>
               <button
                 onClick={handleReplace}
-                className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-[12.5px] font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
+                className="flex flex-1 sm:flex-none justify-center items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-[12.5px] font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
               >
                 <Check size={12} />
                 Replace
@@ -248,6 +256,7 @@ export function SelectionAIOverlay({ editor, isOpen, snapshot, onClose }: Select
       style={{
         top: coords.top,
         left: coords.left,
+        width: coords.width,
       }}
       // Prevent clicks inside the overlay from stealing focus from the editor before we process them
       onMouseDown={(e) => {

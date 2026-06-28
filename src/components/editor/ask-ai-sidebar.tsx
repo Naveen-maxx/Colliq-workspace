@@ -148,7 +148,7 @@ export function AskAISidebar({ isOpen, onClose, editor }: AskAISidebarProps) {
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: "100%", opacity: 0 }}
           transition={{ type: "spring", damping: 25, stiffness: 200 }}
-          className="fixed bottom-0 right-0 top-0 z-50 flex w-[400px] flex-col border-l border-border/50 bg-[#FAFAFA] shadow-[0_0_40px_rgba(0,0,0,0.05)]"
+          className="fixed bottom-0 right-0 top-0 z-50 flex w-full sm:w-[400px] flex-col border-l border-border/50 bg-[#FAFAFA] shadow-[0_0_40px_rgba(0,0,0,0.05)]"
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border/50 px-5 py-4 bg-white/50 backdrop-blur-md">

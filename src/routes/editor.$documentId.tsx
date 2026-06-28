@@ -646,7 +646,7 @@ function EditorPage() {
       editorProps: {
         attributes: {
           class: "colliq-prose focus:outline-none min-h-[1056px] text-[15.5px] leading-[1.75] text-foreground",
-          style: `padding: ${padding.top}px ${padding.right}px ${padding.bottom}px ${padding.left}px;`,
+          style: `--pad-top: ${padding.top}px; --pad-right: ${padding.right}px; --pad-bottom: ${padding.bottom}px; --pad-left: ${padding.left}px;`,
         },
       },
     });
@@ -1057,26 +1057,26 @@ function TopHeader({
 
   return (
     <header className="border-b border-border-soft bg-[#FAFAFA]/95 backdrop-blur-xl">
-      <div className="flex items-center gap-3 px-5 py-2.5">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2.5 sm:px-5">
         {/* Left: logo + doc icon + title */}
-        <Link
-          to="/workspace"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted"
-          aria-label="Back to workspace"
-        >
-          <img src={colliqLogo} alt="" className="h-7 w-7 object-contain" />
-        </Link>
-
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
-          <FileText size={18} strokeWidth={1.7} />
-        </div>
-
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <Link
+            to="/workspace"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-surface-muted"
+            aria-label="Back to workspace"
+          >
+            <img src={colliqLogo} alt="" className="h-7 w-7 object-contain" />
+          </Link>
+
+          <div className="hidden sm:grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
+            <FileText size={18} strokeWidth={1.7} />
+          </div>
+
           <TitleInput value={title} onChange={setTitle} />
 
           <button
             onClick={() => setFavorite(!favorite)}
-            className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+            className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground shrink-0"
             aria-label="Favorite"
           >
             <Star
@@ -1085,77 +1085,85 @@ function TopHeader({
               className={favorite ? "fill-[var(--accent-warm)] text-[var(--accent-warm)]" : ""}
             />
           </button>
-
-          <SaveStatusPill status={saveStatus} />
+          <div className="hidden sm:block">
+            <SaveStatusPill status={saveStatus} />
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={onReadMode}
-            title="Read Mode"
-            className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium text-foreground/75 transition-all hover:bg-surface-muted hover:text-foreground"
-          >
-            <BookOpen size={14} strokeWidth={1.8} />
-            <span className="hidden lg:inline">Read Mode</span>
-          </button>
-          
-          <div className="mx-1 h-4 w-px bg-border-soft" />
-          
-          {/* Permission Indicator */}
-          {userRole && userRole !== "unauthorized" && (
-            <div className="flex h-9 items-center px-3 text-[12.5px] font-medium text-foreground/75 bg-surface-muted/50 rounded-full">
-              {userRole === "owner" || userRole === "editor" ? "Editing" : userRole === "commenter" ? "Commenting" : "Viewing"}
-            </div>
-          )}
-
-          <HeaderBtn icon={History} label="Version history" onClick={onVersionHistory} />
-          <div className="relative">
-            <HeaderBtn
-              icon={MessageSquare}
-              label="Comments"
-              onClick={onComments}
-              isActive={isCommentsSidebarOpen}
-            />
-            {commentCount > 0 && (
-              <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-white">
-                {commentCount > 99 ? "99+" : commentCount}
-              </span>
-            )}
+        {/* Right: Actions */}
+        <div className="flex w-full sm:w-auto items-center justify-between sm:justify-end gap-1.5 overflow-x-auto no-scrollbar">
+          <div className="sm:hidden shrink-0">
+            <SaveStatusPill status={saveStatus} />
           </div>
-          {userRole !== "viewer" && userRole !== "commenter" && (
-            <HeaderBtn icon={Sparkles} label="Ask AI" highlighted onClick={onAskAI} />
-          )}
           
-          <div className="mx-1 h-4 w-px bg-border-soft" />
-          
-          {/* Active Users (Presence) Avatars */}
-          {activeUsers.length > 0 && (
-            <div className="mr-2 flex items-center gap-2">
-              <div className="flex -space-x-2" title={`${activeUsers.length} collaborator${activeUsers.length > 1 ? 's' : ''} online`}>
-                {activeUsers.slice(0, 4).map(c => (
-                  <div key={c.id} className="z-10 flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-white text-xs font-semibold shadow-sm" style={{ backgroundColor: c.color + '40', color: c.color }}>
-                    {c.avatar ? <img src={c.avatar} alt={c.name} className="h-full w-full object-cover" /> : getInitials(c.name)}
-                  </div>
-                ))}
-                {activeUsers.length > 4 && (
-                  <div className="z-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-surface-muted text-[10px] font-semibold text-muted-foreground shadow-sm">
-                    +{activeUsers.length - 4}
-                  </div>
-                )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={onReadMode}
+              title="Read Mode"
+              className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium text-foreground/75 transition-all hover:bg-surface-muted hover:text-foreground"
+            >
+              <BookOpen size={14} strokeWidth={1.8} />
+              <span className="hidden lg:inline">Read Mode</span>
+            </button>
+            
+            <div className="mx-1 h-4 w-px bg-border-soft" />
+            
+            {/* Permission Indicator */}
+            {userRole && userRole !== "unauthorized" && (
+              <div className="flex h-9 items-center px-3 text-[12.5px] font-medium text-foreground/75 bg-surface-muted/50 rounded-full">
+                {userRole === "owner" || userRole === "editor" ? "Editing" : userRole === "commenter" ? "Commenting" : "Viewing"}
               </div>
-            </div>
-          )}
-
-          <button onClick={onShare} className="ml-1 flex h-9 items-center gap-2 rounded-full bg-primary px-4 text-[13px] font-medium text-white shadow-[0_4px_12px_-4px_color-mix(in_oklab,var(--primary)_55%,transparent)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_92%,black)] active:scale-[0.98]">
-            <Share2 size={14} strokeWidth={2} />
-            Share
-          </button>
-          <div className="ml-1.5 grid h-9 w-9 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-primary to-[var(--accent-violet)] text-[12.5px] font-semibold text-white shadow-[0_2px_8px_-2px_rgba(80,60,200,0.4)]">
-            {user.photoURL ? (
-              <img src={user.photoURL} alt="" className="h-full w-full object-cover" />
-            ) : (
-              initials
             )}
+
+            <HeaderBtn icon={History} label="Version history" onClick={onVersionHistory} />
+            <div className="relative">
+              <HeaderBtn
+                icon={MessageSquare}
+                label="Comments"
+                onClick={onComments}
+                isActive={isCommentsSidebarOpen}
+              />
+              {commentCount > 0 && (
+                <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-white">
+                  {commentCount > 99 ? "99+" : commentCount}
+                </span>
+              )}
+            </div>
+            {userRole !== "viewer" && userRole !== "commenter" && (
+              <HeaderBtn icon={Sparkles} label="Ask AI" highlighted onClick={onAskAI} />
+            )}
+            
+            <div className="mx-1 h-4 w-px bg-border-soft" />
+            
+            {/* Active Users (Presence) Avatars */}
+            {activeUsers.length > 0 && (
+              <div className="mr-2 hidden sm:flex items-center gap-2">
+                <div className="flex -space-x-2" title={`${activeUsers.length} collaborator${activeUsers.length > 1 ? 's' : ''} online`}>
+                  {activeUsers.slice(0, 4).map(c => (
+                    <div key={c.id} className="z-10 flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-white text-xs font-semibold shadow-sm" style={{ backgroundColor: c.color + '40', color: c.color }}>
+                      {c.avatar ? <img src={c.avatar} alt={c.name} className="h-full w-full object-cover" /> : getInitials(c.name)}
+                    </div>
+                  ))}
+                  {activeUsers.length > 4 && (
+                    <div className="z-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-surface-muted text-[10px] font-semibold text-muted-foreground shadow-sm">
+                      +{activeUsers.length - 4}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <button onClick={onShare} className="ml-1 flex h-9 items-center gap-2 rounded-full bg-primary px-3 sm:px-4 text-[13px] font-medium text-white shadow-[0_4px_12px_-4px_color-mix(in_oklab,var(--primary)_55%,transparent)] transition-all hover:bg-[color-mix(in_oklab,var(--primary)_92%,black)] active:scale-[0.98]">
+              <Share2 size={14} strokeWidth={2} />
+              <span className="hidden sm:inline">Share</span>
+            </button>
+            <div className="ml-1.5 grid h-9 w-9 place-items-center overflow-hidden rounded-full shrink-0 bg-gradient-to-br from-primary to-[var(--accent-violet)] text-[12.5px] font-semibold text-white shadow-[0_2px_8px_-2px_rgba(80,60,200,0.4)]">
+              {user.photoURL ? (
+                <img src={user.photoURL} alt="" className="h-full w-full object-cover" />
+              ) : (
+                initials
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1278,7 +1286,7 @@ function SaveStatusPill({ status }: { status: SaveStatus }) {
           >
             <Cloud size={13} strokeWidth={1.8} className="text-emerald-600/80" />
             <CheckCircle2 size={11} strokeWidth={2} className="-ml-1 text-emerald-600/80" />
-            <span>Saved to cloud</span>
+            <span className="hidden sm:inline">Saved to cloud</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1507,8 +1515,9 @@ function MenuBar({
   return (
     <div
       ref={ref}
-      className="relative flex items-center gap-0.5 border-b border-border-soft bg-[#FAFAFA]/95 px-4 py-1 backdrop-blur-xl"
+      className="border-b border-border-soft bg-[#FAFAFA]/95 backdrop-blur-xl"
     >
+      <div className="mx-auto flex w-full max-w-[1600px] relative flex-wrap items-center gap-0.5 px-2 py-1 sm:px-4 overflow-x-auto no-scrollbar">
       {Object.keys(MENUS).map((m) => (
         <div key={m} className="relative">
           <button
@@ -1575,6 +1584,7 @@ function MenuBar({
           </AnimatePresence>
         </div>
       ))}
+      </div>
     </div>
   );
 }
@@ -1604,7 +1614,8 @@ function Toolbar({
   const { activeFont, activeSize } = useEditorTypography(editor);
 
   return (
-    <div className="sticky top-0 z-30 flex flex-wrap items-center gap-x-1 gap-y-2 border-b border-border-soft bg-[#FAFAFA]/95 px-4 py-2 backdrop-blur-xl">
+    <div className="sticky top-0 z-30 border-b border-border-soft bg-[#FAFAFA]/95 backdrop-blur-xl">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-x-1 gap-y-2 px-4 py-2">
       <ToolGroup>
         <IconBtn icon={Undo2} onClick={() => editor.chain().focus().undo().run()} label="Undo" />
         <IconBtn icon={Redo2} onClick={() => editor.chain().focus().redo().run()} label="Redo" />
@@ -1743,6 +1754,7 @@ function Toolbar({
             )}
           </motion.div>
         </button>
+      </div>
       </div>
     </div>
   );
@@ -2131,7 +2143,7 @@ function DocumentCanvas({
 
   if (!pageMode) {
     return (
-      <div className="relative flex justify-center px-6 pb-32 pt-8">
+      <div className="relative flex justify-center px-2 sm:px-4 md:px-6 pb-32 pt-4 sm:pt-8">
         <motion.div
           animate={{ scale: zoom / 100 }}
           transition={{ type: "spring", stiffness: 240, damping: 30 }}
@@ -2148,7 +2160,7 @@ function DocumentCanvas({
   const pages = Array.from({ length: numPages });
 
   return (
-    <div className="relative flex justify-center px-6 pb-32 pt-8">
+    <div className="relative flex justify-center px-2 sm:px-4 md:px-6 pb-32 pt-4 sm:pt-8">
       {/* Left vertical ruler */}
       <div className="pointer-events-none hidden md:block" style={{ width: 18 }}>
         <div className="sticky top-[100px] flex flex-col items-end gap-[6.5px] pr-1 text-[9px] text-muted-foreground/70">
@@ -2208,7 +2220,17 @@ function DocumentCanvas({
 function EditorStyles() {
   return (
     <style>{`
-      .colliq-prose { font-family: var(--font-sans); caret-color: var(--primary); outline: none; }
+      .colliq-prose { 
+        font-family: var(--font-sans); 
+        caret-color: var(--primary); 
+        outline: none; 
+        padding: 24px 20px;
+      }
+      @media (min-width: 640px) {
+        .colliq-prose {
+          padding: var(--pad-top, 96px) var(--pad-right, 96px) var(--pad-bottom, 96px) var(--pad-left, 96px);
+        }
+      }
       .colliq-prose h1 { font-family: var(--font-display); font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; margin: 0.6em 0 0.3em; }
       .colliq-prose h2 { font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.3; margin: 0.6em 0 0.25em; }
       .colliq-prose h3 { font-family: var(--font-display); font-size: 17px; font-weight: 600; line-height: 1.35; margin: 0.5em 0 0.2em; }
@@ -2227,7 +2249,7 @@ function EditorStyles() {
       .colliq-prose a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
       
       /* New Extensions Styles */
-      .colliq-prose table { border-collapse: collapse; margin: 1.5em 0; width: 100%; overflow: hidden; border-radius: 6px; box-shadow: 0 0 0 1px var(--border-soft); }
+      .colliq-prose table { border-collapse: collapse; margin: 1.5em 0; width: 100%; max-width: 100%; border-radius: 6px; box-shadow: 0 0 0 1px var(--border-soft); display: block; overflow-x: auto; white-space: nowrap; }
       .colliq-prose table td, .colliq-prose table th { border: 1px solid var(--border-soft); padding: 0.6em; vertical-align: top; min-width: 1em; position: relative; }
       .colliq-prose table th { background-color: var(--surface-muted); font-weight: 600; text-align: left; }
       .colliq-prose table .selectedCell::after { content: ""; position: absolute; inset: 0; background-color: color-mix(in oklch, var(--primary) 15%, transparent); pointer-events: none; }

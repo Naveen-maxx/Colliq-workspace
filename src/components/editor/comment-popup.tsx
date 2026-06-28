@@ -54,18 +54,30 @@ export function CommentPopup({
     }
   };
 
+  const isMobile = typeof window !== 'undefined' ? window.innerWidth < 640 : false;
+
   // Position: horizontally centered under anchorRect
   const popupStyle: React.CSSProperties = anchorRect
     ? {
         position: "fixed",
         top: anchorRect.bottom + window.scrollY + 8,
-        left: Math.min(
-          Math.max(anchorRect.left + anchorRect.width / 2 - 160, 12),
-          window.innerWidth - 332
-        ),
+        left: isMobile 
+          ? 12 
+          : Math.min(
+              Math.max(anchorRect.left + anchorRect.width / 2 - 160, 12),
+              window.innerWidth - 332
+            ),
+        width: isMobile ? window.innerWidth - 24 : 320,
         zIndex: 60,
       }
-    : { position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 60 };
+    : { 
+        position: "fixed", 
+        top: "50%", 
+        left: "50%", 
+        transform: "translate(-50%,-50%)", 
+        width: isMobile ? window.innerWidth - 24 : 320,
+        zIndex: 60 
+      };
 
   return (
     <AnimatePresence>
@@ -80,7 +92,7 @@ export function CommentPopup({
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             style={popupStyle}
-            className="w-80 overflow-hidden rounded-2xl border border-border-soft bg-white shadow-[0_20px_60px_-15px_rgba(40,40,90,0.25)] z-[60]"
+            className="overflow-hidden rounded-2xl border border-border-soft bg-white shadow-[0_20px_60px_-15px_rgba(40,40,90,0.25)] z-[60]"
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b border-border-soft px-4 py-3">
