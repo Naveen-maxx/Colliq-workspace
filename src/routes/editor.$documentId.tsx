@@ -50,11 +50,15 @@ import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { getCollabProvider, releaseCollabProvider } from "@/lib/collaboration";
 import { FontSize } from "@/components/editor/extensions/font-size";
-import { TextFormattingToolbar } from "@/components/editor/text-formatting-toolbar";
+import { TextFormattingToolbar, CommenterToolbar } from "@/components/editor/text-formatting-toolbar";
 import { useEditorTypography, UnifiedFontFamilyDropdown, UnifiedFontSizeDropdown, UnifiedFontSizeControl } from "@/components/editor/typography-controls";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { ReadModeView } from "@/components/editor/read-mode-view";
+import { CommentMark, applyCommentMark, removeCommentMark, scrollEditorToComment } from "@/components/editor/extensions/comment-mark";
+import { CommentsSidebar } from "@/components/editor/comments-sidebar";
+import { CommentPopup } from "@/components/editor/comment-popup";
+import { createComment, subscribeToComments, type CommentThread } from "@/firebase/firestore/comments";
 import React from "react";
 
 const lowlight = createLowlight(common);
@@ -200,6 +204,22 @@ function EditorPage() {
   const [selectionAIState, setSelectionAIState] = useState<{ isOpen: boolean; snapshot: AIStateSnapshot | null }>({ isOpen: false, snapshot: null });
   const [summaryPreviewState, setSummaryPreviewState] = useState({ isOpen: false, title: "", content: "", insertAt: 0, isLoading: false });
   const [outlinePopoverState, setOutlinePopoverState] = useState({ isOpen: false, insertAt: 0, documentContext: "" });
+
+  // ── Comment state ──────────────────────────────────────────────────────────
+  const [isCommentsSidebarOpen, setIsCommentsSidebarOpen] = useState(false);
+  const [commentThreads, setCommentThreads] = useState<CommentThread[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(true);
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [commentPopup, setCommentPopup] = useState<{
+    isOpen: boolean;
+    selectedText: string;
+    anchorRect: DOMRect | null;
+    from: number;
+    to: number;
+  }>({ isOpen: false, selectedText: "", anchorRect: null, from: 0, to: 0 });
+  // Track previous comment count for new-comment notifications
+  const prevCommentCountRef = useRef(0);
+  const prevCommentIdsRef = useRef<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Keep a stable ref to the editor for the slash command config (avoids stale closure)
   const editorRef = useRef<any>(null);
@@ -291,6 +311,7 @@ function EditorPage() {
       Indent,
       PageBreak,
       CharacterCount,
+      CommentMark,
       SlashCommand.configure({
         suggestion: getSlashCommandConfig(editorRef, aiController),
       }),
@@ -530,6 +551,81 @@ function EditorPage() {
     }
   }, [editorReady, editor, userRole, provider]);
 
+  // ── Real-time comments subscription ───────────────────────────────────────
+  useEffect(() => {
+    if (!accessGranted) return;
+    setCommentsLoading(true);
+    const unsub = subscribeToComments(documentId, (threads) => {
+      setCommentThreads(threads);
+      setCommentsLoading(false);
+
+      // Phase 12: Toast for NEW open comments from OTHER users
+      const newIds = new Set(threads.map((t) => t.commentId));
+      const prevIds = prevCommentIdsRef.current;
+      const newOpenFromOthers = threads.filter(
+        (t) =>
+          t.status === "open" &&
+          !prevIds.has(t.commentId) &&
+          t.authorId !== user?.uid
+      );
+      if (newOpenFromOthers.length > 0 && prevIds.size > 0) {
+        newOpenFromOthers.forEach((t) => {
+          toast(`${t.authorName} commented`, {
+            description: t.message.slice(0, 80),
+            action: {
+              label: "View",
+              onClick: () => {
+                setIsCommentsSidebarOpen(true);
+                setActiveCommentId(t.commentId);
+                if (editor) scrollEditorToComment(editor, t.commentId);
+              },
+            },
+          });
+        });
+      }
+      prevCommentIdsRef.current = newIds;
+    });
+    return unsub;
+  }, [accessGranted, documentId, user?.uid, editor]);
+
+  // ── Click on comment mark → open sidebar + activate ──────────────────────
+  useEffect(() => {
+    if (!editor) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      const markEl = target.closest(".comment-mark") as HTMLElement | null;
+      if (!markEl) return;
+      const commentId = markEl.getAttribute("data-comment-id");
+      if (!commentId) return;
+      setIsCommentsSidebarOpen(true);
+      setActiveCommentId(commentId);
+      // Highlight the mark as active
+      document.querySelectorAll(".comment-mark.comment-mark--active").forEach((el) =>
+        el.classList.remove("comment-mark--active")
+      );
+      document
+        .querySelectorAll(`.comment-mark[data-comment-id="${commentId}"]`)
+        .forEach((el) => el.classList.add("comment-mark--active"));
+    };
+    const editorEl = editor.view.dom;
+    editorEl.addEventListener("click", handleClick);
+    return () => editorEl.removeEventListener("click", handleClick);
+  }, [editor]);
+
+  // ── Sync resolved marks: remove marks for resolved threads ────────────────
+  // When a thread becomes resolved, its mark is removed in onResolveComment.
+  // When reopened, the Firestore snapshot fires and we keep the existing mark
+  // (it was never removed for reopened threads) — no extra action needed.
+  // This effect also handles cleanup if marks exist for threads that were
+  // deleted externally (another user deleted a thread this user didn't close).
+  useEffect(() => {
+    if (!editor || commentThreads.length === 0) return;
+    const resolvedIds = new Set(
+      commentThreads.filter((t) => t.status === "resolved").map((t) => t.commentId)
+    );
+    resolvedIds.forEach((id) => removeCommentMark(editor, id));
+  }, [commentThreads, editor]);
+
   // ── Apply margin/padding to editor ───────────────────────────────────────
   useEffect(() => {
     if (!editor) return;
@@ -615,6 +711,44 @@ function EditorPage() {
     }
   };
 
+  const openCommentPopup = () => {
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) return;
+    const selectedText = editor.state.doc.textBetween(from, to, " ");
+    // Get anchor rect from the browser selection
+    const domSelection = window.getSelection();
+    const anchorRect = domSelection && domSelection.rangeCount > 0
+      ? domSelection.getRangeAt(0).getBoundingClientRect()
+      : null;
+    setCommentPopup({ isOpen: true, selectedText, anchorRect, from, to });
+  };
+
+  const handleSubmitComment = async (message: string) => {
+    if (!editor || !user) return;
+    const tempId = `temp-${crypto.randomUUID()}`;
+    // Apply a temporary mark immediately (optimistic UI)
+    applyCommentMark(editor, tempId);
+    setCommentPopup((p) => ({ ...p, isOpen: false }));
+    try {
+      const saved = await createComment({
+        documentId,
+        selectedText: commentPopup.selectedText,
+        authorId: user.uid,
+        authorName: user.displayName || user.email || "Anonymous",
+        authorAvatar: user.photoURL || "",
+        message,
+      });
+      // Replace temp mark with the real Firestore commentId
+      removeCommentMark(editor, tempId);
+      applyCommentMark(editor, saved.commentId);
+      setIsCommentsSidebarOpen(true);
+    } catch {
+      removeCommentMark(editor, tempId);
+      toast.error("Failed to post comment");
+    }
+  };
+
   const handleSave = async () => {
     if (!editor) return;
     setSaveStatus("saving");
@@ -662,6 +796,9 @@ function EditorPage() {
               onVersionHistory={() => setVersionHistoryOpen(true)}
               onAskAI={() => setIsAskAIOpen(true)}
               onShare={() => setShareModalOpen(true)}
+              onComments={() => setIsCommentsSidebarOpen((o) => !o)}
+              isCommentsSidebarOpen={isCommentsSidebarOpen}
+              commentCount={commentThreads.filter((t) => t.status === "open").length}
               userRole={userRole}
               activeUsers={activeUsers}
             />
@@ -762,8 +899,13 @@ function EditorPage() {
                   documentContext: editor.getText()
                 }
               });
-            }} 
+            }}
+            onAddComment={openCommentPopup}
           />
+        )}
+        {/* Commenter role: minimal toolbar with only Add Comment */}
+        {editor && userRole === "commenter" && (
+          <CommenterToolbar editor={editor} onAddComment={openCommentPopup} />
         )}
         {editor && userRole !== "viewer" && userRole !== "commenter" && <LinkBubbleMenu editor={editor} />}
         {editor && userRole !== "viewer" && userRole !== "commenter" && <TableBubbleMenu editor={editor} />}
@@ -786,6 +928,54 @@ function EditorPage() {
           <ReadModeView editor={editor} onClose={() => setIsReadMode(false)} />
         </ReadModeErrorBoundary>
       )}
+
+      {/* ── Comments Sidebar ───────────────────────────────────── */}
+      <CommentsSidebar
+        isOpen={isCommentsSidebarOpen}
+        onClose={() => setIsCommentsSidebarOpen(false)}
+        documentId={documentId}
+        threads={commentThreads}
+        loading={commentsLoading}
+        currentUserId={user.uid}
+        currentUserName={user.displayName || user.email || "Anonymous"}
+        currentUserAvatar={user.photoURL || ""}
+        userRole={userRole}
+        activeCommentId={activeCommentId}
+        onResolveComment={(commentId) => {
+          // Phase 7: remove the highlight mark from the editor
+          if (editor) removeCommentMark(editor, commentId);
+        }}
+        onActivateComment={(id) => {
+          setActiveCommentId(id);
+          // Highlight active mark in editor
+          document.querySelectorAll(".comment-mark.comment-mark--active").forEach((el) =>
+            el.classList.remove("comment-mark--active")
+          );
+          if (id) {
+            document
+              .querySelectorAll(`.comment-mark[data-comment-id="${id}"]`)
+              .forEach((el) => el.classList.add("comment-mark--active"));
+            if (editor) scrollEditorToComment(editor, id);
+          }
+        }}
+        onScrollToMark={(commentId) => {
+          if (editor) scrollEditorToComment(editor, commentId);
+        }}
+        collaborators={collaborators.map((c) => ({
+          id: c.userId,
+          name: c.name || c.email || "User",
+          avatar: c.avatar || undefined,
+        }))}
+      />
+
+      {/* ── Comment Creation Popup ──────────────────────────────── */}
+      <CommentPopup
+        isOpen={commentPopup.isOpen}
+        selectedText={commentPopup.selectedText}
+        anchorRect={commentPopup.anchorRect}
+        onSubmit={handleSubmitComment}
+        onCancel={() => setCommentPopup((p) => ({ ...p, isOpen: false }))}
+      />
 
       {/* ── Floating Ask AI Button ────────────────────────────────── */}
       <AnimatePresence>
@@ -825,6 +1015,9 @@ function TopHeader({
   onVersionHistory,
   onAskAI,
   onShare,
+  onComments,
+  isCommentsSidebarOpen,
+  commentCount,
   userRole,
   activeUsers,
 }: {
@@ -838,6 +1031,9 @@ function TopHeader({
   onVersionHistory?: () => void;
   onAskAI: () => void;
   onShare: () => void;
+  onComments: () => void;
+  isCommentsSidebarOpen: boolean;
+  commentCount: number;
   userRole: Role | "unauthorized" | null;
   activeUsers: ActiveUser[];
 }) {
@@ -897,7 +1093,19 @@ function TopHeader({
           )}
 
           <HeaderBtn icon={History} label="Version history" onClick={onVersionHistory} />
-          <HeaderBtn icon={MessageSquare} label="Comments" />
+          <div className="relative">
+            <HeaderBtn
+              icon={MessageSquare}
+              label="Comments"
+              onClick={onComments}
+              isActive={isCommentsSidebarOpen}
+            />
+            {commentCount > 0 && (
+              <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-white">
+                {commentCount > 99 ? "99+" : commentCount}
+              </span>
+            )}
+          </div>
           {userRole !== "viewer" && userRole !== "commenter" && (
             <HeaderBtn icon={Sparkles} label="Ask AI" highlighted onClick={onAskAI} />
           )}
@@ -1067,11 +1275,13 @@ function HeaderBtn({
   icon: Icon,
   label,
   highlighted,
+  isActive,
   onClick,
 }: {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
   label: string;
   highlighted?: boolean;
+  isActive?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -1081,6 +1291,8 @@ function HeaderBtn({
       className={`flex h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] font-medium transition-all ${
         highlighted
           ? "bg-gradient-to-r from-[color-mix(in_oklab,var(--primary)_14%,white)] to-[color-mix(in_oklab,var(--accent-violet)_14%,white)] text-primary ring-1 ring-primary/15 hover:ring-primary/30"
+          : isActive
+          ? "bg-primary-soft text-primary"
           : "text-foreground/75 hover:bg-surface-muted hover:text-foreground"
       }`}
     >

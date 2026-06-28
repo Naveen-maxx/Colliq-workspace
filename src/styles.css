@@ -208,3 +208,27 @@
   pointer-events: none;
   /* background-color is set dynamically inline */
 }
+
+/* ─────────────────────────────────────────────────────────────
+   COMMENT MARKS
+   Subtle amber underline highlight, Google Docs inspired.
+───────────────────────────────────────────────────────────── */
+.comment-mark {
+  background-color: rgba(251, 191, 36, 0.18);
+  border-radius: 2px;
+  border-bottom: 1.5px solid rgba(245, 158, 11, 0.5);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  position: relative;
+}
+
+.comment-mark:hover {
+  background-color: rgba(251, 191, 36, 0.32);
+  border-bottom-color: rgba(245, 158, 11, 0.8);
+}
+
+/* Active / focused comment thread */
+.comment-mark.comment-mark--active {
+  background-color: rgba(251, 191, 36, 0.38);
+  border-bottom-color: rgba(245, 158, 11, 1);
+}

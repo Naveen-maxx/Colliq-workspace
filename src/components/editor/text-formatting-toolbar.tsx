@@ -26,10 +26,12 @@ import { Wand2 } from "lucide-react";
 
 export function TextFormattingToolbar({ 
   editor,
-  onOpenAI
+  onOpenAI,
+  onAddComment,
 }: { 
   editor: Editor | null;
   onOpenAI: () => void;
+  onAddComment?: () => void;
 }) {
   if (!editor) return null;
 
@@ -339,9 +341,7 @@ export function TextFormattingToolbar({
       <FormatButton
         icon={MessageSquarePlus}
         isActive={false}
-        onClick={() => {
-          toast.info("Comments will be available in the collaboration phase.");
-        }}
+        onClick={() => onAddComment?.()}
       />
 
       <div className="h-4 w-px bg-border-soft" />
@@ -378,5 +378,47 @@ function FormatButton({
     >
       <Icon size={15} strokeWidth={2} />
     </button>
+  );
+}
+
+/**
+ * Minimal bubble-menu toolbar shown only for the Commenter role.
+ * Contains a single "Add Comment" button — no formatting or AI actions.
+ */
+export function CommenterToolbar({
+  editor,
+  onAddComment,
+}: {
+  editor: Editor | null;
+  onAddComment: () => void;
+}) {
+  if (!editor) return null;
+
+  const shouldShow = ({ state }: any) => {
+    const { selection } = state;
+    if (selection.empty) return false;
+    if (selection.node?.isLeaf) return false;
+    if (editor.isActive("codeBlock")) return false;
+    return true;
+  };
+
+  return (
+    // @ts-ignore
+    <BubbleMenu
+      editor={editor}
+      shouldShow={shouldShow}
+      // @ts-ignore
+      tippyOptions={{ duration: 150, animation: "shift-away", placement: "top", interactive: true }}
+      className="flex items-center gap-1 rounded-xl border border-border-soft bg-white p-1 shadow-[0_12px_36px_-12px_rgba(40,40,90,0.25)]"
+    >
+      <button
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onAddComment}
+        className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-primary transition-colors hover:bg-primary/10"
+      >
+        <MessageSquarePlus size={14} strokeWidth={2} />
+        Add Comment
+      </button>
+    </BubbleMenu>
   );
 }
