@@ -45,7 +45,7 @@ export function CommentPopup({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
@@ -116,7 +116,7 @@ export function CommentPopup({
                 rows={3}
                 className="w-full resize-none rounded-xl border border-border-soft bg-surface-muted/60 px-3.5 py-2.5 text-[13.5px] text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
               />
-              <p className="mt-1.5 text-[11px] text-muted-foreground/50">⌘ + Enter to submit</p>
+              <p className="mt-1.5 text-[11px] text-muted-foreground/50">Enter to submit, Shift + Enter for new line</p>
             </div>
 
             {/* Actions */}

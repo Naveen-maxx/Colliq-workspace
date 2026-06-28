@@ -555,36 +555,44 @@ function EditorPage() {
   useEffect(() => {
     if (!accessGranted) return;
     setCommentsLoading(true);
-    const unsub = subscribeToComments(documentId, (threads) => {
-      setCommentThreads(threads);
-      setCommentsLoading(false);
+    const unsub = subscribeToComments(
+      documentId,
+      (threads) => {
+        setCommentThreads(threads);
+        setCommentsLoading(false);
 
-      // Phase 12: Toast for NEW open comments from OTHER users
-      const newIds = new Set(threads.map((t) => t.commentId));
-      const prevIds = prevCommentIdsRef.current;
-      const newOpenFromOthers = threads.filter(
-        (t) =>
-          t.status === "open" &&
-          !prevIds.has(t.commentId) &&
-          t.authorId !== user?.uid
-      );
-      if (newOpenFromOthers.length > 0 && prevIds.size > 0) {
-        newOpenFromOthers.forEach((t) => {
-          toast(`${t.authorName} commented`, {
-            description: t.message.slice(0, 80),
-            action: {
-              label: "View",
-              onClick: () => {
-                setIsCommentsSidebarOpen(true);
-                setActiveCommentId(t.commentId);
-                if (editor) scrollEditorToComment(editor, t.commentId);
+        // Phase 12: Toast for NEW open comments from OTHER users
+        const newIds = new Set(threads.map((t) => t.commentId));
+        const prevIds = prevCommentIdsRef.current;
+        const newOpenFromOthers = threads.filter(
+          (t) =>
+            t.status === "open" &&
+            !prevIds.has(t.commentId) &&
+            t.authorId !== user?.uid
+        );
+        if (newOpenFromOthers.length > 0 && prevIds.size > 0) {
+          newOpenFromOthers.forEach((t) => {
+            toast(`${t.authorName} commented`, {
+              description: t.message.slice(0, 80),
+              action: {
+                label: "View",
+                onClick: () => {
+                  setIsCommentsSidebarOpen(true);
+                  setActiveCommentId(t.commentId);
+                  if (editor) scrollEditorToComment(editor, t.commentId);
+                },
               },
-            },
+            });
           });
-        });
+        }
+        prevCommentIdsRef.current = newIds;
+      },
+      (error) => {
+        console.error("Comments subscription error:", error);
+        toast.error(`Failed to load comments: ${error.message || String(error)}`);
+        setCommentsLoading(false);
       }
-      prevCommentIdsRef.current = newIds;
-    });
+    );
     return unsub;
   }, [accessGranted, documentId, user?.uid, editor]);
 
@@ -711,16 +719,23 @@ function EditorPage() {
     }
   };
 
-  const openCommentPopup = () => {
+  const openCommentPopup = (e?: React.MouseEvent) => {
     if (!editor) return;
     const { from, to } = editor.state.selection;
     if (from === to) return;
     const selectedText = editor.state.doc.textBetween(from, to, " ");
-    // Get anchor rect from the browser selection
-    const domSelection = window.getSelection();
-    const anchorRect = domSelection && domSelection.rangeCount > 0
-      ? domSelection.getRangeAt(0).getBoundingClientRect()
-      : null;
+    
+    let anchorRect = null;
+    if (e && e.currentTarget) {
+      anchorRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    } else {
+      // Fallback to text selection rect
+      const domSelection = window.getSelection();
+      anchorRect = domSelection && domSelection.rangeCount > 0
+        ? domSelection.getRangeAt(0).getBoundingClientRect()
+        : null;
+    }
+    
     setCommentPopup({ isOpen: true, selectedText, anchorRect, from, to });
   };
 
@@ -728,7 +743,7 @@ function EditorPage() {
     if (!editor || !user) return;
     const tempId = `temp-${crypto.randomUUID()}`;
     // Apply a temporary mark immediately (optimistic UI)
-    applyCommentMark(editor, tempId);
+    applyCommentMark(editor, tempId, commentPopup.from, commentPopup.to);
     setCommentPopup((p) => ({ ...p, isOpen: false }));
     try {
       const saved = await createComment({
@@ -741,11 +756,12 @@ function EditorPage() {
       });
       // Replace temp mark with the real Firestore commentId
       removeCommentMark(editor, tempId);
-      applyCommentMark(editor, saved.commentId);
+      applyCommentMark(editor, saved.commentId, commentPopup.from, commentPopup.to);
       setIsCommentsSidebarOpen(true);
-    } catch {
+    } catch (err: any) {
+      console.error(err);
       removeCommentMark(editor, tempId);
-      toast.error("Failed to post comment");
+      toast.error(`Failed to post comment: ${err.message || String(err)}`);
     }
   };
 

@@ -31,7 +31,7 @@ export function TextFormattingToolbar({
 }: { 
   editor: Editor | null;
   onOpenAI: () => void;
-  onAddComment?: () => void;
+  onAddComment?: (e: React.MouseEvent) => void;
 }) {
   if (!editor) return null;
 
@@ -341,7 +341,7 @@ export function TextFormattingToolbar({
       <FormatButton
         icon={MessageSquarePlus}
         isActive={false}
-        onClick={() => onAddComment?.()}
+        onClick={(e) => onAddComment?.(e)}
       />
 
       <div className="h-4 w-px bg-border-soft" />
@@ -366,7 +366,7 @@ function FormatButton({
 }: {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
   isActive: boolean;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <button
@@ -390,7 +390,7 @@ export function CommenterToolbar({
   onAddComment,
 }: {
   editor: Editor | null;
-  onAddComment: () => void;
+  onAddComment: (e: React.MouseEvent) => void;
 }) {
   if (!editor) return null;
 

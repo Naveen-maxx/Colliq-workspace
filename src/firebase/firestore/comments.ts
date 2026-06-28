@@ -128,20 +128,33 @@ export async function getComments(documentId: string): Promise<CommentThread[]> 
 
 export function subscribeToComments(
   documentId: string,
-  onChange: (threads: CommentThread[]) => void
+  onChange: (threads: CommentThread[]) => void,
+  onError?: (error: any) => void
 ): Unsubscribe {
   const q = query(threadsCol(documentId), orderBy("createdAt", "asc"));
 
-  return onSnapshot(q, async (snap) => {
-    const threads = snap.docs.map((d) => d.data() as CommentThread);
-    // Hydrate replies in parallel
-    await Promise.all(
-      threads.map(async (t) => {
-        t.replies = await _hydrateReplies(documentId, t.commentId);
-      })
-    );
-    onChange(threads);
-  });
+  return onSnapshot(
+    q,
+    async (snap) => {
+      try {
+        const threads = snap.docs.map((d) => d.data() as CommentThread);
+        // Hydrate replies in parallel
+        await Promise.all(
+          threads.map(async (t) => {
+            t.replies = await _hydrateReplies(documentId, t.commentId);
+          })
+        );
+        onChange(threads);
+      } catch (err) {
+        console.error("Error hydrating comments:", err);
+        if (onError) onError(err);
+      }
+    },
+    (err) => {
+      console.error("Error subscribing to comments:", err);
+      if (onError) onError(err);
+    }
+  );
 }
 
 /* ──────────────────────────────────────────────────────────────

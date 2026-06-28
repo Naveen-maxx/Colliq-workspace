@@ -46,13 +46,15 @@ export const CommentMark = Mark.create({
    HELPERS — apply / remove marks in the editor
 ────────────────────────────────────────────────────────────── */
 
-/** Apply a comment mark to the current selection */
-export function applyCommentMark(editor: any, commentId: string) {
-  editor
-    .chain()
-    .focus()
-    .setMark("comment", { commentId })
-    .run();
+/** Apply a comment mark to the current or specified selection */
+export function applyCommentMark(editor: any, commentId: string, from?: number, to?: number) {
+  const chain = editor.chain();
+  if (from !== undefined && to !== undefined) {
+    chain.setTextSelection({ from, to });
+  } else {
+    chain.focus();
+  }
+  chain.setMark("comment", { commentId }).run();
 }
 
 /** Remove a comment mark by its commentId from the entire document */
